@@ -198,6 +198,34 @@ def test_a_long_prefill_is_not_mistaken_for_buffering(tmp_path, monkeypatch):
     assert "do not stream" not in text
 
 
+def test_two_files_for_one_engine_are_flagged_rather_than_fused(tmp_path, monkeypatch):
+    """Rows are grouped by (engine, model), so two runs of the same engine and
+    the same model become one row -- a fit over both of them together, printed
+    in the shape of a single measurement.
+
+    This bit while writing the piece. The 64k sweep and the 32k sweep of LM
+    Studio carry the same engine and the same model, were handed over together,
+    and came back as one line that was then quoted as the 32k result. The
+    docstring had warned about it since the first version; a warning that lives
+    in a docstring is not read at the moment it matters, so it is a line of
+    output.
+    """
+    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06),
+             a_run(tmp_path, "b.jsonl", "alpha", 0.06)]
+    text = run_verdict(monkeypatch, paths)
+    assert "POOLED" in text
+    assert "a.jsonl" in text and "b.jsonl" in text
+
+
+def test_one_file_per_engine_is_not_flagged(tmp_path, monkeypatch):
+    """The ordinary case has to stay quiet, or the flag stops meaning
+    anything."""
+    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06),
+             a_run(tmp_path, "b.jsonl", "beta", 0.06)]
+    text = run_verdict(monkeypatch, paths)
+    assert "POOLED" not in text
+
+
 def test_two_lengths_are_not_enough_to_pin_an_intercept():
     """Two points always fit a line exactly, so the fit would report a perfect
     R2 and a standard error of zero for an intercept it cannot support. This is

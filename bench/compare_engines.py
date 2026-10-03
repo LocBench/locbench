@@ -205,6 +205,23 @@ def main():
             _cell(fe), _cell(fc), _gap(fe, fc),
             "%.2f s" % tail if tail is not None else "-"))
 
+    # A key built from more than one file is a pooled fit, and it looks exactly
+    # like any other row. This bit while writing the piece: the 64k sweep and
+    # the 32k sweep of the same engine and the same model were handed over
+    # together and came back as one line over forty-two rows, which was then
+    # quoted as the 32k result. The docstring has warned about it since the
+    # first version; a warning nobody reads at the moment it matters is not a
+    # guard, so it is a line of output now.
+    pooled = {e: r["files"] for e, r in runs.items() if len(r["files"]) > 1}
+    if pooled:
+        print()
+        print("  POOLED -- these keys were built from more than one file, so each")
+        print("  row below is a fit over all of them mixed together:")
+        for (engine, model), files in sorted(pooled.items()):
+            print("    %s / %s  <- %s" % (engine, (model or "?").split("/")[-1],
+                                          ", ".join(files)))
+        print("  Fit them one at a time unless the pooling is what you meant.")
+
     if len(fitted) < 2:
         return 0
 
