@@ -165,8 +165,8 @@ path llama.cpp and LM Studio are both given is a symbolic link into Ollama's own
 blob store —
 
 ```
-lmstudio/orcarouter/Qwen3.8-27B-Uncensored-Q4_K_M.gguf ->
-    /usr/share/ollama/.ollama/models/blobs/sha256-3445102e9cde5d56...
+models/lmstudio/orcarouter/Qwen3.8-27B-Uncensored/Qwen3.8-27B-Uncensored-Q4_K_M.gguf
+  -> /usr/share/ollama/.ollama/models/blobs/sha256-3445102e9cde5d5625...
 ```
 
 — so it is one file on one disk, opened by three programs. Same weights, same
@@ -201,8 +201,10 @@ reason.** Over fourteen lengths, each measured five times, TabbyAPI's window is
 not monotone: 164 tokens took 0.340 s and 214 tokens took 0.330 s, with spreads
 of 10 ms and 0 ms. A prefill cannot be faster with more tokens, so at these
 lengths TabbyAPI's window contains something that is not prefill. LM Studio's
-row has the same shape in its own clock — 0.435 s at 126 tokens against 0.689 at
-406, a slope far shallower than the 775 tok/s its long prompts show. Whatever
+row has the same shape in its own clock: 0.435 s at 126 tokens and 0.689 s at
+406 is 1,100 tokens per second, where its own long prompts give 775. The two
+ends of one line cannot belong to rates a third apart, and the intercept fitted
+across them carries that disagreement in its error bar. Whatever
 that is, it is not measured here, and it is why those two rows are quoted with
 intervals four to nine times wider than the other two. **The piece does not rank
 them against each other on a number it cannot pin down** — which is the
@@ -357,7 +359,8 @@ disturb them.
 The 14 ms is small and it is real, and it lands exactly where section 5 said the
 remaining cost lives. Tokenising real text — punctuation, mixed case, subwords,
 thousands of distinct words instead of a thousand repeated ones — is not free,
-and it is part of the front door. This does not explain the other 90 ms. It
+and it is part of the front door. It does not explain the other 84: llama.cpp's
+fixed cost is 98 ms on its own clock, and this says 14 of those are the text. It
 measures one piece of the thing that was named and not measured.
 
 ---
