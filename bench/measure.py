@@ -454,7 +454,7 @@ def experiment_d3(session, words):
 
     D3 is D1 repeated per engine. Running the same code against every engine in
     one session is what makes the comparison a comparison: different sessions
-    have different intercepts, as the 2 October data shows.
+    have different intercepts, as the September data shows.
     """
     experiment_d1(session, words)
 

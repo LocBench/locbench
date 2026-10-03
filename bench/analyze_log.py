@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """What a request actually costs: analyse the proxy log.
 
-Redoes, with one command, the 2 October 2026 analysis of the data logged by
+Redoes, with one command, the analysis of the data logged by
 the collection proxy, and prints its limits alongside — which matter as much as
 the numbers, because this data was NOT collected to answer this question and
 carries a confound.
 
     python3 bench/analyze_log.py
-    python3 bench/analyze_log.py --log data/2026-10-02-usage.jsonl
+    python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
     python3 bench/analyze_log.py --csv data/local-inference.csv
 
 The nub of it, in one line: TabbyAPI computes

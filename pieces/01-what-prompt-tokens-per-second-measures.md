@@ -248,7 +248,7 @@ Raw data, the script that produced every number above, and its tests are in the
 repository. The analysis prints its own limits:
 
 ```bash
-python3 bench/analyze_log.py --log data/2026-10-02-usage.jsonl
+python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
 ```
 
 The fit was verified against an independent implementation (the closed form for

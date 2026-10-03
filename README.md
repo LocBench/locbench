@@ -76,7 +76,7 @@ pieces/                   the published pieces, and the posts that go with them
 Redo everything the protocol claims, from zero:
 
 ```bash
-python3 bench/analyze_log.py --log data/2026-10-02-usage.jsonl
+python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
 python3 -m pytest tests/ -q
 ```
 

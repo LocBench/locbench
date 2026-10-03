@@ -181,7 +181,7 @@ def check_numbers(report):
     """Recompute the analysis now, so the numbers can be compared by eye."""
     import analyze_log as A
 
-    data_files = ROOT / "data" / "2026-10-02-usage.jsonl"
+    data_files = ROOT / "data" / "2026-09-usage.jsonl"
     rows, _ = A.read(str(data_files))
     points = A.usable(rows)
     overall = A.fit(points)

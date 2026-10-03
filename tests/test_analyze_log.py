@@ -3,7 +3,7 @@
 The protocol promises that every number is redone with one command. A command
 that gets the arithmetic wrong is worse than no command: this checks that the
 least squares find what they should, that unusable rows are dropped, and that
-the fit on the real 2 October 2026 data still returns those numbers.
+the fit on the real September 2026 data still returns those numbers.
 
 The last tests are regressions against the committed data: they are how the
 bench notices that it has changed.
@@ -18,7 +18,7 @@ import importlib
 
 A = importlib.import_module("analyze_log")
 
-SNAPSHOT = Path(__file__).resolve().parent.parent / "data" / "2026-10-02-usage.jsonl"
+SNAPSHOT = Path(__file__).resolve().parent.parent / "data" / "2026-09-usage.jsonl"
 
 
 # ------------------------------------------------------------- i conti
@@ -110,7 +110,7 @@ def test_discards_report_the_reason():
     assert s["no uncached tokens (it was all in cache)"] == 1
 
 
-# ------------------------------------------ the real 2 October 2026 data
+# ----------------------------------------- the real September 2026 data
 
 def test_usable_and_discards_add_up_to_the_total():
     """The two lists cannot diverge: they come from the same decision."""

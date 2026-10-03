@@ -50,7 +50,7 @@ spread over the few new tokens and the reported speed drops. This holds for
 anyone reading that field, regardless of the data that follows: it is a property
 of the code.
 
-### 1.2 What the data says — 2 October 2026
+### 1.2 What the data says — September 2026
 
 98 real requests logged by `tabby-usage-proxy.py` in front of TabbyAPI (EXL3, one
 RTX 3090). **87** carry a usable `usage` block; the other 11 are 2 failed
@@ -190,7 +190,7 @@ same card, the same prompts, across **Ollama** (11434), **llama.cpp** (8090),
 the same format. Where they are not, we say so, and the comparison is made at
 equal *nominal parameters and quantization*, not equal files.
 
-**A warning that comes from the data in §1.3:** in the 2 October log the two
+**A warning that comes from the data in §1.3:** in the September log the two
 models present have very different intercepts — 98 ms for `qwen3.8-27b-4.0bpw`
 (n=8), 488 ms for the `uncensored` one (n=79). It would look as if the model
 matters. But the first ran in one session and the second in another, and with n=8
@@ -300,7 +300,7 @@ of them is a throughput.
 Every recorded request is **one JSON line**, and it is published raw.
 
 ```json
-{"ts":"2026-10-02T23:10:00","engine":"tabbyapi","version":"…","model":"…",
+{"ts":"2026-09-29T22:10:00","engine":"tabbyapi","version":"…","model":"…",
  "d1":{"imposed_cache":0.5,"prompt_tokens":8000,"cached_tokens":4000},
  "ttft_s":8.12,"reported_rate":493,"uncached_tokens":4000,
  "completion_tokens":200,"generation_time_s":2.6,"generation":77,
@@ -311,6 +311,16 @@ Every recorded request is **one JSON line**, and it is published raw.
 need. Anyone who doubts a point can look at it. Anyone who wants to redo the fit
 can redo it.
 
+**Raw includes the parts that are not tidy.** The `client` field holds whatever
+the client sent as its name, and some of the values are in Italian — `batteria`,
+`prova-effort`, `salute-gpu` — because they came from throwaway test scripts
+written in Italian. They are left exactly as they were captured. Renaming them
+would make the file tidier and would no longer be the record of what ran; the
+argument for publishing raw data at all is that the file is evidence, and
+evidence that has been cleaned up is not evidence. Everything *around* the data
+— documents, code, column names — is in English, and now so is the tool that
+collects it.
+
 **What is not published: the logging proxy that collected it.** It sits between
 the client and the engine, adds `stream_options.include_usage` when a client
 omits it — TabbyAPI returns a `usage` block only if asked — and writes one line
@@ -320,11 +330,12 @@ is a declared limit, and it is one of the reasons the protocol insists on
 publishing raw data rather than summaries.
 
 **The scripts are in the repository**, and a published measurement is redone with
-one command. The 2 October 2026 log is in `data/2026-10-02-usage.jsonl` — 98
-lines, committed — and **everything in §1 comes out of it**:
+one command. The log is in `data/2026-09-usage.jsonl` — 98 lines from two
+sessions, 19 and 29 September 2026, committed — and **everything in §1 comes out
+of it**:
 
 ```bash
-python3 bench/analyze_log.py --log data/2026-10-02-usage.jsonl
+python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
 ```
 
 The same command also prints the limits section: whoever redoes the fit sees the
@@ -362,7 +373,7 @@ What holds today, without further experiments:
 1. the definition, read from the source: the field named `prompt_tokens_per_sec`
    divides uncached tokens by **time to first token**. A fact about the code, not
    a measurement, and true for anyone who reads it;
-2. within the streaming traffic of 2 October, a fixed cost of **0.75 s per
+2. within the streaming traffic of those two sessions, a fixed cost of **0.75 s per
    request**, R²=0.947 over 56 requests from 13 to 9,746 uncached tokens;
 3. a cached token costs **0.009 ms**: the cost is per request, not per token
    re-read;
