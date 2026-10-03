@@ -59,6 +59,24 @@ ENGINES = {
 
 # A small vocabulary for building prompts of a controlled size. Words are short
 # and common so that the token count stays close to the word count.
+# Three engines, three names for the same thing. The OpenAI convention is
+# `content`; a reasoning model streams its thinking elsewhere, and where that
+# elsewhere is depends on who is serving:
+#
+#   content            the standard, and what a non-reasoning model sends
+#   reasoning          Ollama
+#   reasoning_content  TabbyAPI, and the vLLM convention it follows
+#
+# Counting only `content` reports a model that produced nothing, which is how a
+# whole experiment run came back with no first token in it.
+PIECE_FIELDS = ("content", "reasoning", "reasoning_content")
+
+
+def piece_text(delta):
+    """The text in one delta, under whichever name this engine uses."""
+    return "".join(delta.get(field) or "" for field in PIECE_FIELDS)
+
+
 VOCAB = (
     "the of and to a in that is was he for it with as his on be at by had this "
     "have from or one but not what all were when we there can an your which do "
@@ -107,7 +125,7 @@ def _maybe_json(raw):
 def stream_json(url, payload, timeout=600):
     """A streaming request, timed by the client.
 
-    Returns (first_token_at, last_token_at, pieces, usage, started_at).
+    Returns (first_token_at, last_token_at, pieces, usage, timings, started_at).
 
     Two things learned from a real engine rather than from a mock. Pieces of
     text arrive in `delta.content` **or** `delta.reasoning` -- a reasoning model
@@ -129,6 +147,7 @@ def stream_json(url, payload, timeout=600):
     first = last = None
     pieces = 0
     usage = None
+    timings = None
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw_line in resp:
             line = raw_line.decode("utf-8", "replace").strip()
@@ -142,44 +161,106 @@ def stream_json(url, payload, timeout=600):
                 continue
             if obj.get("usage"):
                 usage = obj["usage"]
+            if obj.get("timings"):
+                timings = obj["timings"]
             for choice in (obj.get("choices") or []):
-                delta = choice.get("delta") or {}
-                text = (delta.get("content") or "") + (delta.get("reasoning") or "")
+                text = piece_text(choice.get("delta") or {})
                 if not text:
                     continue
                 now = time.perf_counter()
                 first = first if first is not None else now
                 last = now
                 pieces += 1
-    return first, last, pieces, usage, started
+    return first, last, pieces, usage, timings, started
 
 
 # ------------------------------------------------------------- the engines
 
-def engine_version(engine, url):
-    """What version the engine says it is.
+def local_version(engine):
+    """The version read off the disk, for engines that will not say.
 
-    Returns a string, or 'unknown' -- and 'unknown' is a real answer that gets
-    recorded. Guessing a version would be worse than not having one.
+    TabbyAPI answers /health with `{"status": "healthy"}` and nothing else: it
+    has no version endpoint at all. Its source checkout and the version of the
+    backend it runs on are on disk, so the version is read from there.
+
+    An engine update moves these numbers. Not knowing which version produced a
+    row makes a regression and a configuration change look the same, which is
+    the whole reason the field exists.
+    """
+    sources = {
+        "tabbyapi": [
+            (["git", "-C", os.path.expanduser("~/tools/tabbyAPI"),
+              "log", "-1", "--format=%h"], "tabbyAPI"),
+            ([os.path.expanduser("~/tools/tabbyAPI/venv/bin/python"), "-c",
+              "import importlib.metadata as m; print(m.version('exllamav3'))"], "exllamav3"),
+        ],
+        "llamacpp": [
+            (["git", "-C", os.path.expanduser("~/tools/llama.cpp"),
+              "describe", "--tags"], "llama.cpp"),
+        ],
+    }.get(engine, [])
+    parts = []
+    for command, label in sources:
+        try:
+            out = subprocess.run(command, capture_output=True, text=True, timeout=10)
+            value = out.stdout.strip().splitlines()
+            if out.returncode == 0 and value and value[0]:
+                parts.append("%s %s" % (label, value[0]))
+        except Exception:
+            continue
+    return ", ".join(parts) if parts else ""
+
+
+def engine_version(engine, url):
+    """What version the engine says it is, or what it can be found to be.
+
+    Three outcomes, and the third is honest rather than convenient: a version
+    the engine declares, a version read off the disk, or 'unknown'. A guessed
+    version would be the worst of the three.
     """
     path = ENGINES.get(engine, {}).get("version")
-    if not path:
-        return "unknown"
-    status, body = get_json(url.rstrip("/") + path)
-    if status != 200 or not isinstance(body, dict):
-        return "unknown"
-    for key in ("version", "build_info", "build", "model_version"):
-        value = body.get(key)
-        if isinstance(value, str) and value:
-            return value
-    # llama.cpp reports the build inside `build_info`; some builds nest it
-    for value in body.values():
-        if isinstance(value, dict):
-            for key in ("version", "build_info", "build"):
-                inner = value.get(key)
-                if isinstance(inner, str) and inner:
-                    return inner
-    return "unknown"
+    declared = None
+    if path:
+        status, body = get_json(url.rstrip("/") + path)
+        if status == 200 and isinstance(body, dict):
+            for key in ("version", "build_info", "build", "model_version"):
+                value = body.get(key)
+                if isinstance(value, str) and value:
+                    declared = value
+                    break
+            if not declared:
+                # llama.cpp reports the build inside `build_info`; some builds
+                # nest it a level down.
+                for value in body.values():
+                    if isinstance(value, dict):
+                        for key in ("version", "build_info", "build"):
+                            inner = value.get(key)
+                            if isinstance(inner, str) and inner:
+                                declared = inner
+                                break
+    # A successful request that carries no version is not a version. TabbyAPI
+    # answers /v1/model with the model's own details and never says which build
+    # it is, so the disk is asked instead of the socket.
+    return declared or local_version(engine) or "unknown"
+
+
+# Under this the card is doing desktop work and nothing else. Above it,
+# something is resident, and a measurement taken next to it is a measurement of
+# two things at once.
+IDLE_VRAM_MIB = 4000
+
+
+def gpu_state():
+    """(used, total) in MiB, or (None, None) with no NVIDIA tool present."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5)
+        used, total = out.stdout.strip().split(",")[:2]
+        return int(used), int(total)
+    except Exception:
+        return None, None
 
 
 def vram_probe(stop_event, samples):
@@ -239,6 +320,10 @@ class Session:
         self.version = engine_version(engine, self.url)
         self.rows = []
         self.started = time.strftime("%Y-%m-%dT%H:%M:%S")
+        # The protocol says no external load on the GPU. Nothing was checking.
+        # A model left resident from an earlier session is exactly the kind of
+        # thing that turns two measurements into one measurement of two things.
+        self.vram_at_start = gpu_state()
 
     # ---- one request
 
@@ -266,13 +351,15 @@ class Session:
                "engine": self.engine, "version": self.version, "model": self.model}
         error = None
         usage = None
+        timings = None
         client_ttft = None
         client_total = None
         completion = None
 
         try:
             if stream:
-                first, last, chunks, usage, t0 = stream_json(self.url + "/v1/chat/completions", payload)
+                first, last, chunks, usage, timings, t0 = stream_json(
+                    self.url + "/v1/chat/completions", payload)
                 client_total = (last - t0) if last else None
                 client_ttft = (first - t0) if first else None
                 completion = chunks or None
@@ -282,8 +369,16 @@ class Session:
                     error = "http %s: %s" % (status, raw[:120])
                 elif isinstance(body, dict):
                     usage = body.get("usage")
+                    timings = body.get("timings")
                     choices = body.get("choices") or []
-                    completion = len(choices[0].get("message", {}).get("content", "").split()) if choices else None
+                    if choices:
+                        # A reasoning model puts its answer where `content`
+                        # should be only sometimes: what comes back is
+                        # `reasoning_content`, and `content` is None. Splitting
+                        # None crashed a whole experiment run.
+                        message = choices[0].get("message") or {}
+                        text = piece_text(message)
+                        completion = len(text.split()) if text else None
         except Exception as exc:
             error = "%s: %s" % (type(exc).__name__, exc)
 
@@ -291,7 +386,17 @@ class Session:
         stop.set()
         sampler.join(timeout=1)
 
-        row.update(_from_usage(usage))
+        # The engine may publish its window as raw times (llama.cpp) or as a
+        # rate to be inverted (TabbyAPI), or not at all (Ollama). All three are
+        # handled, and all three are recorded with the row.
+        from_clock = from_timings(timings)
+        if from_clock:
+            row.update(_from_usage(usage))
+            row.update({k: v for k, v in from_clock.items() if v is not None})
+            row["window_from"] = "engine timings"
+        else:
+            row.update(_from_usage(usage))
+            row["window_from"] = "engine rate" if row.get("engine_ttft_s") else None
         row["client_total_s"] = round(client_total, 4)
         row["client_ttft_s"] = round(client_ttft, 4) if client_ttft is not None else None
         # The client's own view of the generation rate, available even when the
@@ -355,6 +460,34 @@ class Session:
     def sleep(self):
         if self.wait:
             time.sleep(self.wait)
+
+
+def from_timings(timings):
+    """The window as llama.cpp reports it: raw, and not to be inverted.
+
+    TabbyAPI publishes a rate and the window has to be recovered from it.
+    llama.cpp publishes `prompt_n` and `prompt_ms` side by side, which is the
+    same information without the arithmetic in between -- and its
+    `prompt_per_second` is `prompt_n / prompt_ms`, the same quantity under the
+    same misleading name.
+
+    `prompt_n` counts the tokens the engine actually processed, so the cached
+    ones are not in it; `cache_n` is where they are counted.
+    """
+    if not isinstance(timings, dict):
+        return None
+    prompt_n = timings.get("prompt_n")
+    prompt_ms = timings.get("prompt_ms")
+    if not prompt_n or not prompt_ms:
+        return None
+    return {
+        "uncached": int(prompt_n),
+        "cached_tokens": int(timings.get("cache_n") or 0),
+        "engine_ttft_s": round(prompt_ms / 1000.0, 4),
+        "reported_tps": timings.get("prompt_per_second"),
+        "completion_tokens": timings.get("predicted_n"),
+        "generation_tps": timings.get("predicted_per_second"),
+    }
 
 
 def _from_usage(usage):

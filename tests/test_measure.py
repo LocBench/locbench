@@ -210,15 +210,23 @@ def test_the_engine_version_is_recorded_on_every_row(engine, tmp_path):
     assert "version" in row
 
 
-def test_a_version_the_engine_will_not_give_is_unknown_not_a_guess(engine, tmp_path):
-    """Version endpoints differ per engine and some are not there at all.
+def test_a_version_nobody_can_supply_is_unknown_not_a_guess(engine, monkeypatch):
+    """TabbyAPI has no version endpoint at all -- /health answers 'healthy' and
+    nothing else -- so its version is read off the disk instead.
 
-    What must never happen is a made-up version: 'unknown' is honest, and worse
-    than a number, which is exactly the point of recording it.
+    When neither the engine nor the disk can supply one, the answer is
+    'unknown'. That is honest and it is worse than a number, which is exactly
+    why it gets recorded rather than filled in with something plausible.
     """
+    monkeypatch.setattr(measure, "local_version", lambda _engine: "")
     assert measure.engine_version("tabbyapi", engine) == "unknown"    # no /v1/model
     assert measure.engine_version("ollama", engine) == "unknown"      # no /api/version
-    assert measure.engine_version("llamacpp", engine + "/nope") == "unknown"
+
+
+def test_the_version_is_read_off_the_disk_when_the_engine_stays_quiet(monkeypatch):
+    """The fallback that makes the field worth having on a real machine."""
+    monkeypatch.setattr(measure, "local_version", lambda _engine: "tabbyAPI abc1234")
+    assert measure.engine_version("tabbyapi", "http://127.0.0.1:1") == "tabbyAPI abc1234"
 
 
 def test_the_window_the_engine_implies_is_recovered(engine, tmp_path):
@@ -260,6 +268,29 @@ def test_an_engine_that_publishes_no_rate_is_still_measured(engine, tmp_path):
     assert row["prompt_tokens"] == 6              # but the counts are there
     assert row["client_ttft_s"] is not None       # and the client measured anyway
     assert measure._generation_speed(row) is not None
+
+
+def test_the_three_names_for_a_piece_of_text():
+    """The same thing has three names, and the engine picks.
+
+    `content` is the OpenAI convention. `reasoning` is Ollama. And
+    `reasoning_content` is TabbyAPI -- which is what a whole D1 run against a
+    real TabbyAPI came back without seeing, so the first token was never
+    recorded and the run had to be thrown away.
+    """
+    assert measure.piece_text({"content": "x"}) == "x"
+    assert measure.piece_text({"reasoning": "x"}) == "x"
+    assert measure.piece_text({"reasoning_content": "x"}) == "x"
+    assert measure.piece_text({}) == ""
+    assert measure.piece_text({"content": "a", "reasoning": "b"}) == "ab"
+
+
+def test_a_reply_with_no_content_does_not_crash(engine, tmp_path):
+    """TabbyAPI answers a reasoning model with `content: None` and the text in
+    `reasoning_content`. Splitting None killed nine rows of a real run."""
+    session, _ = a_session(engine, tmp_path)
+    row = session.request("hello", stream=False, inject_usage=True)
+    assert row["discarded"] is False
 
 
 def test_text_arriving_as_reasoning_is_counted(engine, tmp_path):
