@@ -683,7 +683,8 @@ def _summary(row):
     if row["discarded"]:
         return "DISCARDED  %s" % row["reason"]
     return "prompt=%s cached=%s ttft=%s s  engine=%s tok/s" % (
-        row["prompt_tokens"], row["cached_tokens"], row["engine_ttft_s"], row["reported_tps"])
+        row.get("uncached") or row.get("prompt_tokens"), row.get("cached_tokens"),
+        row.get("engine_ttft_s"), row.get("reported_tps"))
 
 
 # ---------------------------------------------------------------- reporting
