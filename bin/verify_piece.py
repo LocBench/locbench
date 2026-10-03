@@ -310,6 +310,13 @@ def check_measurements(esito):
         "ENGINE tabbyapi": ("data/2026-10-03-stream-tabbyapi.jsonl", ("stream",), "engine_ttft_s"),
         "ENGINE ollama": ("data/2026-10-03-stream-ollama.jsonl", ("stream",), "engine_ttft_s"),
         "ENGINE lmstudio": ("data/2026-10-03-stream-lmstudio.jsonl", ("stream",), "engine_ttft_s"),
+        # ---- the second model: a third the size, same client ------------------
+        "8B CLIENT ollama": ("data/2026-10-03-otto-stream-ollama.jsonl", ("stream",), "client_ttft_s"),
+        "8B CLIENT llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "8B CLIENT lmstudio": ("data/2026-10-03-otto-stream-lmstudio.jsonl", ("stream",), "client_ttft_s"),
+        "8B ENGINE llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
+        "8B no-MTP CLIENT llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "8B no-MTP ENGINE llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
         # ---- the prose control, and the counterbalance for its order ----------
         "prose: vocabulary": ("data/2026-10-03-prosa-vocab.jsonl", ("plain",), "engine_ttft_s"),
         "prose: real prose": ("data/2026-10-03-prosa-corpus.jsonl", ("plain",), "engine_ttft_s"),

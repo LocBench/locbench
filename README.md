@@ -68,19 +68,27 @@ turns out to depend on which clock you ask.
 ## Layout
 
 ```
-PROTOCOL.md            what we measure, how, and what we do NOT control
-bench/analyze_log.py    redoes the analysis from the raw data, limits included
-bin/verify_piece.py    the gate: citations, quoted code and numbers in a piece
-bin/verify_post.py     post texts against the platform character limits
-data/                    the raw JSONL, one line per request, committed
-tests/                   the arithmetic and the two gates, verified
-pieces/                   the published pieces, and the posts that go with them
+PROTOCOL.md               what we measure, how, and what we do NOT control
+bench/measure.py           the client: builds the prompts, sends them, records raw
+bench/compare_engines.py   one cell, several engines, both clocks, and the gap
+bench/analyze_log.py       redoes the September analysis from the raw data
+bench/analyze_d1.py        one cell of D1, fitted across the lengths
+bench/environment.sh       the machine and the engine versions, as a card
+bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
+bin/verify_post.py         post texts against the platform character limits
+data/                      the raw JSONL, one line per request, committed
+tests/                     the arithmetic and the gates, verified
+pieces/                    the published pieces, and the posts that go with them
 ```
 
 Redo everything the protocol claims, from zero:
 
 ```bash
 python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
+python3 bench/compare_engines.py --cell stream \
+    data/2026-10-03-stream-ollama.jsonl data/2026-10-03-stream-llamacpp.jsonl \
+    data/2026-10-03-stream-tabbyapi.jsonl data/2026-10-03-stream-lmstudio.jsonl
+python3 bin/verify_piece.py --all
 python3 -m pytest tests/ -q
 ```
 
