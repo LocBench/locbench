@@ -884,7 +884,13 @@ def main():
     ap.add_argument("--url", help="override the engine's default address")
     ap.add_argument("--model", required=False, help="the model name the engine knows")
     ap.add_argument("--words", type=int, default=4000,
-                    help="words in the prompt, before the tail (a word is roughly a token)")
+                    help="words in the prompt, before the tail. A word is NOT "
+                         "roughly a token: measured on this bench, the same word "
+                         "count is 1.3x to 1.6x as many tokens in real prose as in "
+                         "the fixed vocabulary, and up to 40%% more between two "
+                         "passages of prose. Prompt length is quoted in tokens "
+                         "throughout, because the fit uses the count the engine "
+                         "reports and a length in words hides the difference.")
     ap.add_argument("--repetitions", type=int, default=5)
     ap.add_argument("--wait", type=float, default=0.0, help="seconds between requests")
     ap.add_argument("--out", help="JSONL to append to")

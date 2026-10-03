@@ -242,6 +242,14 @@ generic name. If a metric cannot be defined unambiguously, it is not published.
 **Generation is always measured separately from the prompt.** A number that mixes
 the two says nothing.
 
+**Prompt length is quoted in tokens, never in words.** A word is not a unit of
+work. Measured on this bench, the same word count is **1.3x to 1.6x** as many
+tokens in real prose as in the fixed vocabulary, and **up to 40% more** between
+two passages of prose of the same length. A benchmark that states its prompt
+length in words is stating a number that varies by half between two prompts it
+is treating as equal — and the fit below is over tokens, because that is the
+count the engine reports.
+
 **Not every engine publishes a rate, and that is part of the result.** TabbyAPI
 does, and its field can be inverted to recover the window. Ollama's
 OpenAI-compatible endpoint publishes token counts and **no timing at all** —

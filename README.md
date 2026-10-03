@@ -107,11 +107,20 @@ and being checkable is the whole claim.
 
 ## Status
 
-The protocol is written and the first analysis is reproducible from the
-committed data. What comes next are the **three controlled experiments** the
-protocol describes as D1, D2 and D3 — they need the GPU free, and D1 is the one
-that decides whether the fixed cost belongs to streaming, to the telemetry flag,
-or to the client.
+The protocol is written, the three controlled experiments (D1, D2, D3) have been
+run on four engines, and every number in the two published pieces is recomputed
+from the committed data by `bin/verify_piece.py`.
+
+The method changed while doing it, and that is the most useful thing here: **the
+engine's own reported window is not one instrument read four times.** Over
+identical streamed requests, llama.cpp's leaves 63 ms of each request untimed
+and TabbyAPI's 128. So the ranking column is the client's clock, over streamed
+requests, where one clock times one interval for every engine — and the engine's
+own number is kept beside it as the cross-check it always was.
+
+What is not done is in the pieces, item by item, rather than in a footnote:
+one machine, one card, one model, and prompts that are still not anyone's
+real workload.
 
 The piece published so far is in [`pieces/`](pieces/).
 
