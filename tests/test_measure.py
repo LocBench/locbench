@@ -1,0 +1,320 @@
+"""The measurement client, against an engine that pretends.
+
+Nothing here measures performance: a fake engine cannot be fast or slow. What it
+can do is answer correctly, badly, or not at all -- and those are the failures
+that would quietly corrupt a real session. A client that sends the wrong flag in
+one of the four D1 cells, or that drops a failed request instead of recording it,
+produces a dataset that looks fine and means nothing.
+
+So the fake engine records every payload it receives, and the tests check what
+was asked and what was written down.
+"""
+import importlib
+import json
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import pytest
+
+BENCH = Path(__file__).resolve().parent.parent / "bench"
+sys.path.insert(0, str(BENCH))
+measure = importlib.import_module("measure")
+
+
+# ------------------------------------------------------------ fake engine
+
+class FakeEngine(BaseHTTPRequestHandler):
+    """An OpenAI-compatible endpoint that remembers what it was asked."""
+
+    received = []
+    fail_next = 0
+    report_usage = True
+    report_timings = True
+    put_text_in_reasoning = False
+    version = "9.9.9-test"
+
+    def log_message(self, *args):
+        pass
+
+    def _json(self, obj, status=200):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/v1/models":
+            return self._json({"data": [{"id": "fake-model"}]})
+        if self.path == "/v1/version":
+            return self._json({"version": self.version})
+        return self._json({"error": "no"}, 404)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        payload = json.loads(self.rfile.read(length) or b"{}")
+        FakeEngine.received.append(payload)
+
+        if FakeEngine.fail_next > 0:
+            FakeEngine.fail_next -= 1
+            return self._json({"error": {"message": "engine said no"}}, 503)
+
+        text = payload["messages"][0]["content"]
+        prompt_tokens = len(text.split()) + 5
+        # Half the prompt reported as already cached, in the same field names a
+        # real engine uses, so the read-back path is exercised rather than
+        # bypassed.
+        cached = prompt_tokens // 2
+        usage = {"prompt_tokens": prompt_tokens,
+                 "prompt_tokens_details": {"cached_tokens": cached},
+                 "completion_tokens": 20}
+        if FakeEngine.report_timings:
+            # TabbyAPI publishes these. Ollama's OpenAI endpoint publishes none
+            # of them, which is why `report_timings` exists.
+            usage["prompt_tokens_per_sec"] = 500.0
+            usage["completion_tokens_per_sec"] = 80.0
+
+        if payload.get("stream"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            field = "reasoning" if FakeEngine.put_text_in_reasoning else "content"
+            for piece in ("one", " two"):
+                chunk = {"choices": [{"delta": {field: piece}}]}
+                self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
+                self.wfile.flush()
+                # A real engine does not answer in two milliseconds. Without a
+                # pause the mock is faster than the client's guard against
+                # dividing by a near-zero window, and the generation rate comes
+                # out null in a way no real session would reproduce.
+                time.sleep(0.06)
+            final = {"choices": []}
+            if FakeEngine.report_usage and (payload.get("stream_options") or {}).get("include_usage"):
+                final["usage"] = usage
+            self.wfile.write(b"data: " + json.dumps(final).encode() + b"\n\n")
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+        else:
+            body = {"choices": [{"message": {"content": "one two"}}]}
+            if FakeEngine.report_usage:
+                body["usage"] = usage
+            return self._json(body)
+
+
+@pytest.fixture
+def engine():
+    FakeEngine.received = []
+    FakeEngine.fail_next = 0
+    FakeEngine.report_usage = True
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeEngine)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:%d" % server.server_address[1]
+    server.shutdown()
+    server.server_close()
+
+
+def a_session(engine, tmp_path, **kw):
+    out = tmp_path / "rows.jsonl"
+    args = dict(engine="tabbyapi", url=engine, model="fake-model",
+                out=str(out), repetitions=1, wait=0.0, verbose=False)
+    args.update(kw)
+    return measure.Session(**args), out
+
+
+# ------------------------------------------------------- what gets sent
+
+def test_the_four_cells_send_the_flags_they_claim(engine, tmp_path):
+    """D1 rests on four combinations being four combinations.
+
+    If `inject` leaked into the streaming-only cells, or the flag were sent
+    everywhere, the experiment would compare one thing with itself and report a
+    difference of zero as a finding.
+    """
+    session, _ = a_session(engine, tmp_path)
+    measure.experiment_d1(session, words=50)
+
+    sent = {(p.get("stream", False),
+             (p.get("stream_options") or {}).get("include_usage", False))
+            for p in FakeEngine.received}
+    assert sent == {(True, True), (True, False), (False, True), (False, False)}
+
+
+def test_the_prompt_is_fresh_in_every_request(engine, tmp_path):
+    """A repeated prompt would be served from the prefix cache, and the cell
+    would silently become a repeat of the previous one."""
+    session, _ = a_session(engine, tmp_path)
+    measure.experiment_d1(session, words=50)
+    prompts = [p["messages"][0]["content"] for p in FakeEngine.received]
+    assert len(prompts) == len(set(prompts)), "a prompt was repeated"
+
+
+def test_d2_nests_the_shared_prefix_and_keeps_tails_fresh(engine, tmp_path):
+    """What a prefix cache can reuse is text it has already seen.
+
+    So the shared part of a larger fraction must contain, as a prefix, the shared
+    part of a smaller one -- the 25% request and the 50% request have to agree on
+    their first quarter. And at 0% there is nothing shared at all, which is the
+    point of that cell.
+
+    The tails must be new every time: a repeated tail would be cached too, and
+    the fraction we read back would not be the fraction we asked for.
+    """
+    session, _ = a_session(engine, tmp_path)
+    measure.experiment_d2(session, words=100, fractions=[0.0, 0.25, 0.5, 0.9])
+
+    prompts = [p["messages"][0]["content"] for p in FakeEngine.received]
+    shared = sorted((p.split("Section B.")[0].split() for p in prompts), key=len)
+    tails = [p.split("Section B.")[1] for p in prompts]
+
+    assert len(set(tails)) == len(tails), "a tail was reused"
+
+    # The 0% request carries no shared text: there is nothing for the cache to
+    # find, which is exactly what that cell is for.
+    assert shared[0] == ["Section", "A."]
+
+    # Compared as words, not as strings. As strings the shorter one ends with
+    # the blank line and the longer one continues with a space, so the string
+    # test fails on a separator while the tokens nest perfectly -- and it is the
+    # tokens the cache matches on.
+    for shorter, longer in zip(shared[1:], shared[2:]):
+        assert longer[:len(shorter)] == shorter, "the shared prefixes are not nested"
+
+
+# ------------------------------------------------------ what gets written
+
+def test_a_failed_request_is_recorded_not_dropped(engine, tmp_path):
+    """The rule from the protocol: a measurement that disappears without
+    explanation is how a bench lies."""
+    session, out = a_session(engine, tmp_path)
+    FakeEngine.fail_next = 1
+    row = session.request("hello", stream=False, inject_usage=False)
+    session.keep(row, "d1", "plain", 1)
+
+    assert row["discarded"] is True
+    assert "503" in row["reason"]
+    written = [json.loads(l) for l in out.read_text().splitlines()]
+    assert len(written) == 1 and written[0]["discarded"] is True
+
+
+def test_the_engine_version_is_recorded_on_every_row(engine, tmp_path):
+    """An engine update moves these numbers. Without the version in the row,
+    a regression and a configuration change look the same."""
+    session, _ = a_session(engine, tmp_path)
+    row = session.request("hello", stream=False, inject_usage=False)
+    assert row["version"] == "unknown" or isinstance(row["version"], str)
+    assert "version" in row
+
+
+def test_a_version_the_engine_will_not_give_is_unknown_not_a_guess(engine, tmp_path):
+    """Version endpoints differ per engine and some are not there at all.
+
+    What must never happen is a made-up version: 'unknown' is honest, and worse
+    than a number, which is exactly the point of recording it.
+    """
+    assert measure.engine_version("tabbyapi", engine) == "unknown"    # no /v1/model
+    assert measure.engine_version("ollama", engine) == "unknown"      # no /api/version
+    assert measure.engine_version("llamacpp", engine + "/nope") == "unknown"
+
+
+def test_the_window_the_engine_implies_is_recovered(engine, tmp_path):
+    """The whole finding: reported rate divides uncached tokens by a window that
+    contains a fixed cost, and the window is recoverable by inverting it."""
+    session, _ = a_session(engine, tmp_path)
+    row = session.request("hello", stream=False, inject_usage=False)
+    # The fake engine reports one word plus five tokens, half of it cached, at
+    # a declared 500 tok/s: 6 tokens, 3 cached, 3 uncached, 3/500 of a second.
+    assert row["prompt_tokens"] == 6
+    assert row["cached_tokens"] == 3
+    assert row["uncached"] == 3
+    assert row["engine_ttft_s"] == pytest.approx(3 / 500.0, abs=1e-4)
+
+
+def test_the_client_measures_its_own_first_token(engine, tmp_path):
+    """The engine's window and the client's window are different measurements of
+    the same request. Recording only one of them would hide the difference."""
+    session, _ = a_session(engine, tmp_path)
+    row = session.request("hello", stream=True, inject_usage=True)
+    assert row["client_ttft_s"] is not None
+    assert row["client_total_s"] >= row["client_ttft_s"]
+
+
+def test_an_engine_that_publishes_no_rate_is_still_measured(engine, tmp_path):
+    """Ollama's OpenAI endpoint reports token counts and no timings at all.
+
+    Found by running against a real Ollama, not by a mock. The engine's window
+    cannot be recovered there because the field does not exist, so the client's
+    own measurement is the only one -- and it has to be recorded, not left null
+    because the engine was quiet.
+    """
+    session, _ = a_session(engine, tmp_path)
+    FakeEngine.report_timings = False
+    row = session.request("hello", stream=True, inject_usage=True)
+
+    assert row["reported_tps"] is None            # the engine said nothing
+    assert row["engine_ttft_s"] is None           # so the window is not recoverable
+    assert row["prompt_tokens"] == 6              # but the counts are there
+    assert row["client_ttft_s"] is not None       # and the client measured anyway
+    assert measure._generation_speed(row) is not None
+
+
+def test_text_arriving_as_reasoning_is_counted(engine, tmp_path):
+    """A reasoning model streams its thinking in `delta.reasoning`.
+
+    Counting only `delta.content` reports a model that produced nothing, and the
+    client's own rate would be null on exactly the models people run most.
+    """
+    session, _ = a_session(engine, tmp_path)
+    FakeEngine.put_text_in_reasoning = True
+    row = session.request("hello", stream=True, inject_usage=True)
+    assert row["client_pieces"] == 2, "the reasoning pieces were not counted"
+
+
+def test_streaming_without_usage_leaves_the_fields_empty_not_zero(engine, tmp_path):
+    """Zero and 'the engine did not say' are different facts. A zero would be
+    averaged into the results as if it were a measurement."""
+    session, _ = a_session(engine, tmp_path)
+    row = session.request("hello", stream=True, inject_usage=False)
+    assert row["prompt_tokens"] is None
+    assert row["engine_ttft_s"] is None
+
+
+# ------------------------------------------------------------- the report
+
+def test_the_report_uses_the_median_and_shows_the_interval(engine, tmp_path):
+    """Long tails are the norm in latency. A mean hides them; the protocol says
+    median and interval, and the report has to say the same."""
+    rows = [{"cell": "a", "discarded": False, "engine_ttft_s": v, "uncached": 10,
+             "reported_tps": 100} for v in (1.0, 1.1, 1.2, 9.0)]
+    printed = []
+    real_print = print
+    measure.print = lambda *a, **k: printed.append(" ".join(str(x) for x in a))
+    try:
+        measure.report(rows)
+    finally:
+        measure.print = real_print
+    text = "\n".join(printed)
+    # With four values the median is the mean of the middle two: 1.15. The mean
+    # of all four would be 3.075 -- which is the number the protocol says not to
+    # publish, because one slow request drags it away from reality.
+    assert "1.150" in text
+    assert "3.07" not in text
+    assert "1.000" in text and "9.000" in text   # the interval
+
+
+def test_discarded_rows_are_reported_with_their_reason(engine, tmp_path):
+    rows = [{"cell": "a", "discarded": True, "reason": "http 503: busy"},
+            {"cell": "a", "discarded": False, "engine_ttft_s": 1.0,
+             "uncached": 10, "reported_tps": 100}]
+    printed = []
+    real_print = measure.print
+    measure.print = lambda *a, **k: printed.append(" ".join(str(x) for x in a))
+    try:
+        measure.report(rows)
+    finally:
+        measure.print = real_print
+    assert any("http 503" in line for line in printed)
