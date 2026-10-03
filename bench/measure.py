@@ -549,24 +549,38 @@ def _generation_speed(row):
 
 # ------------------------------------------------------------- experiments
 
-def experiment_d1(session, words):
-    """Four cells, same length, same client, same session.
+def experiment_d1(session, lengths):
+    """Four cells, same lengths, same client, same session.
 
     The text is fresh in every request, so the engine's prefix cache cannot
     quietly turn one cell into a repeat of another. That is verified afterwards
     by looking at `cached_tokens`, not assumed.
+
+    The cells are walked at every length rather than at one, and that is not
+    decoration. Fitting four cells at a single length looked convincing and gave
+    llama.cpp an intercept of 0.090 s; the same engine over seven lengths gives
+    0.106. Both fits are honest and they disagree, because the intercept is an
+    extrapolation and how far it has to extrapolate is decided by the shortest
+    prompt in the set. Comparing cells is safe at any set of lengths; quoting a
+    *number* is only safe at lengths that pin it down.
     """
+    if isinstance(lengths, int):
+        lengths = [lengths]
     cells = [("stream+inject", True, True), ("stream", True, False),
              ("inject", False, True), ("plain", False, False)]
     for repetition in range(1, session.repetitions + 1):
-        for name, stream, inject in cells:
-            seed = 100_000 + repetition * 97 + hash(name) % 1000
-            prompt = build_prompt(seed, words, seed + 500_000, 60)
-            row = session.request(prompt, stream=stream, inject_usage=inject)
-            row = session.keep(row, "d1", name, repetition)
-            if session.verbose:
-                print("    %-14s rep %d  %s" % (name, repetition, _summary(row)), flush=True)
-            session.sleep()
+        for words in lengths:
+            for name, stream, inject in cells:
+                seed = 200_000 + words * 7 + repetition * 97 + abs(hash(name)) % 1000
+                prompt = build_prompt(session.salt + seed, words,
+                                      session.salt + seed + 500_000, 60)
+                row = session.request(prompt, stream=stream, inject_usage=inject)
+                row["words"] = words
+                row = session.keep(row, "d1", name, repetition)
+                if session.verbose:
+                    print("    %-14s %5d parole rep %d  %s" % (
+                        name, words, repetition, _summary(row)), flush=True)
+                session.sleep()
 
 
 def experiment_d2(session, words, fractions):
@@ -826,7 +840,7 @@ def main():
     ap.add_argument("--out", help="JSONL to append to")
     ap.add_argument("--fractions", default="0,0.25,0.5,0.75,0.9,0.99",
                     help="for d2: the cached fractions to ask for")
-    ap.add_argument("--lengths", default="300,1200,2000,4000",
+    ap.add_argument("--lengths", default="20,60,150,300,1200,2000,4000",
                     help="for sweep: the prompt lengths to walk, in words")
     ap.add_argument("--max-tokens", type=int, default=64,
                     help="how much the model may write back. Held fixed, this is a "
@@ -872,7 +886,7 @@ def main():
         lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
         experiment_sweep(session, lengths, args.max_tokens)
     elif args.experiment == "d1":
-        experiment_d1(session, args.words)
+        experiment_d1(session, [int(x) for x in args.lengths.split(",") if x.strip()])
     elif args.experiment == "d3":
         experiment_d3(session, args.words)
     else:

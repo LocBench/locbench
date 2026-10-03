@@ -24,6 +24,7 @@ rather than smoothed over:
 import argparse
 import glob
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -98,7 +99,22 @@ def line_for(rows, cell):
     if not fit:
         return None
     (intercept, slope), r2, count = fit
-    return {"a": intercept, "r": 1 / slope if slope > 0 else float("inf"),
+    # The standard error on the intercept, because an intercept quoted without
+    # one is an intercept nobody can argue with and nobody should believe. It
+    # depends on how far the shortest prompt is from zero: a fit whose nearest
+    # point is at 400 tokens is extrapolating, and this says by how much that
+    # costs.
+    m = len(xs)
+    mean_x = sum(xs) / m
+    sxx = sum((v - mean_x) ** 2 for v in xs)
+    residuals = [y - (intercept + slope * x) for x, y in zip(xs, ys)]
+    if m > 2 and sxx > 0:
+        var = sum(r * r for r in residuals) / (m - 2)
+        stderr = math.sqrt(var * (1.0 / m + mean_x * mean_x / sxx))
+    else:
+        stderr = float("nan")
+    return {"a": intercept, "se": stderr, "shortest": min(xs),
+            "r": 1 / slope if slope > 0 else float("inf"),
             "r2": r2, "n": count, "source": "+".join(sorted(sources))}
 
 
@@ -119,8 +135,8 @@ def main():
     print("D3 — the same four cells, engine against engine")
     print("  comparing the '%s' cell, which needs no flag and no streaming" % args.cell)
     print()
-    print("  %-12s %-42s %9s %9s %8s %7s %s" % (
-        "engine / model", "version", "fixed", "tok/s", "R2", "points", "window from"))
+    print("  %-30s %-22s %17s %7s %7s %3s  %s" % (
+        "engine / model", "version", "fixed cost", "tok/s", "R2", "n", "window from"))
     print("  " + "-" * 100)
 
     fitted = {}
@@ -129,13 +145,13 @@ def main():
         line = line_for(run["rows"], args.cell)
         label = "%s / %s" % (engine, (model or "?").split("/")[-1])
         if not line:
-            print("  %-34s %-30s   (not enough lengths to fit)" % (
-                label[:34], (run["version"] or "unknown")[:30]))
+            print("  %-30s %-22s   (not enough lengths to fit)" % (
+                label[:30], (run["version"] or "unknown")[:22]))
             continue
         fitted[label] = line
-        print("  %-34s %-30s %7.3f s %9.0f %8.4f %7d %s" % (
-            label[:34], (run["version"] or "unknown")[:30],
-            line["a"], line["r"], line["r2"], line["n"], line["source"]))
+        print("  %-30s %-22s %7.3f +/- %.4f s %7.0f %7.4f %3d  %s" % (
+            label[:30], (run["version"] or "unknown")[:22],
+            line["a"], line["se"], line["r"], line["r2"], line["n"], line["source"]))
 
     if len(fitted) >= 2:
         same_instrument = len({f["source"] for f in fitted.values()}) == 1
@@ -150,7 +166,7 @@ def main():
         values = {e: f["a"] for e, f in fitted.items()}
         lo, hi = min(values.values()), max(values.values())
         print("    fixed cost by engine: %s"
-              % ", ".join("%s %.3f s" % (e, a) for e, a in sorted(values.items())))
+              % ", ".join("%s %.3f s" % (e.split(" / ")[0], a) for e, a in sorted(values.items())))
         print("    spread: %.3f s (%.1fx between the smallest and the largest)"
               % (hi - lo, (hi / lo) if lo > 0 else float("inf")))
         if hi - lo < 0.05:

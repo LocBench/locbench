@@ -136,7 +136,7 @@ def test_the_four_cells_send_the_flags_they_claim(engine, tmp_path):
     difference of zero as a finding.
     """
     session, _ = a_session(engine, tmp_path)
-    measure.experiment_d1(session, words=50)
+    measure.experiment_d1(session, [50])
 
     sent = {(p.get("stream", False),
              (p.get("stream_options") or {}).get("include_usage", False))
@@ -148,7 +148,7 @@ def test_the_prompt_is_fresh_in_every_request(engine, tmp_path):
     """A repeated prompt would be served from the prefix cache, and the cell
     would silently become a repeat of the previous one."""
     session, _ = a_session(engine, tmp_path)
-    measure.experiment_d1(session, words=50)
+    measure.experiment_d1(session, [50])
     prompts = [p["messages"][0]["content"] for p in FakeEngine.received]
     assert len(prompts) == len(set(prompts)), "a prompt was repeated"
 
