@@ -160,9 +160,17 @@ only one that exists for all four.
 | LM Studio 69d945a | 0.416 ± 0.061 s | 729 tok/s | 0.9971 | — not published |
 
 **Ollama, llama.cpp and LM Studio are the same file.** Not the same model family
-— the same bytes: `sha256 3445102e…`, 16,811 MB, checked by hash and loaded by
-three different programs. Same weights, same card, same machine. Per-request cost
-differs **4.0x**; throughput differs 1.6x.
+and not the same bytes by coincidence: `sha256 3445102e…`, 16,811 MB, and the
+path llama.cpp and LM Studio are both given is a symbolic link into Ollama's own
+blob store —
+
+```
+lmstudio/orcarouter/Qwen3.8-27B-Uncensored-Q4_K_M.gguf ->
+    /usr/share/ollama/.ollama/models/blobs/sha256-3445102e9cde5d56...
+```
+
+— so it is one file on one disk, opened by three programs. Same weights, same
+card, same machine. Per-request cost differs **4.0x**; throughput differs 1.6x.
 
 **The two clocks agree on the slope and disagree on the intercept**, which is
 exactly what a constant per-request offset does to a line. llama.cpp: 1145 tok/s
@@ -170,10 +178,23 @@ on the client's clock and 1152 on its own. TabbyAPI: 1106 and 1110. If the gap
 were an artefact of measuring different things, it would show up in the slope
 too. It does not.
 
-**What the errors say.** Ollama and llama.cpp are separated by 56 ms with
-combined errors of 12 — that difference is real. llama.cpp and LM Studio by
-255 ms, TabbyAPI sitting between them with an interval that overlaps neither
-cleanly.
+**What the errors say.** All four numbers come from one clock, so these are
+differences worth stating as such:
+
+| pair | apart by | combined error | |
+|---|---|---|---|
+| Ollama — llama.cpp | 56 ms | 12 ms | 4.6σ |
+| Ollama — LM Studio | 311 ms | 61 ms | **5.1σ** |
+| llama.cpp — LM Studio | 255 ms | 62 ms | 4.1σ |
+| llama.cpp — TabbyAPI | 112 ms | 45 ms | 2.5σ |
+| TabbyAPI — LM Studio | 143 ms | 75 ms | **1.9σ** |
+
+**The two ends are 4.0x apart and that is 5.1 sigma** — the widest the interval
+allows is 3.2x and the narrowest 4.9x, so the factor survives its own error
+bars. **The middle of the field does not.** TabbyAPI and LM Studio are 1.9σ
+apart, which is not a separation, and llama.cpp is 2.5σ from TabbyAPI. Three of
+the four could be reordered by a better measurement of any one of them, and this
+piece does not claim otherwise.
 
 **Two of the four carry errors four to nine times the others', and there is a
 reason.** Over fourteen lengths, each measured five times, TabbyAPI's window is
@@ -183,8 +204,9 @@ lengths TabbyAPI's window contains something that is not prefill. LM Studio's
 row has the same shape in its own clock — 0.435 s at 126 tokens against 0.689 at
 406, a slope far shallower than the 775 tok/s its long prompts show. Whatever
 that is, it is not measured here, and it is why those two rows are quoted with
-intervals an order of magnitude wider than the other two. **The piece does not
-rank them against each other on a number it cannot pin down.**
+intervals four to nine times wider than the other two. **The piece does not rank
+them against each other on a number it cannot pin down** — which is the
+difference between the table above and the one this piece published first.
 
 All four stream. The reply that arrives *after* the first chunk is 0.66 s for
 TabbyAPI, 1.06 s for llama.cpp, 1.42 s for LM Studio and 1.65 s for Ollama — so
