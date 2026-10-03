@@ -1,0 +1,18 @@
+LocBench — environment
+captured               2026-10-03T17:25:27+02:00
+gpu                    NVIDIA GeForce RTX 3090
+vram                   24576 MiB
+driver                 595.99.02
+vram in use            1990 MiB
+cpu                    Intel(R) Core(TM) Ultra 7 265KF
+threads                20
+ram                    62 GiB
+os                     Nobara Linux 44 (KDE Plasma Desktop Edition)
+kernel                 7.2.6-201.nobara.fc44.x86_64
+tabbyapi               not answering at http://127.0.0.1:8091
+llama.cpp              not answering at http://127.0.0.1:8090
+lmstudio               running, version not declared
+ollama                 0.34.4
+tabbyapi source        be74bf0 2026-09-28
+llama.cpp source       c85b92c 2026-09-29
+exllamav3              1.5.2+cu132.torch2.11.0
