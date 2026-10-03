@@ -15,7 +15,9 @@ only one that did not ask for telemetry. Three explanations, one dataset, no way
 to separate them.
 
 This is the controlled version. The answer is that the cost belongs to the
-engine, and that engines differ by a factor of three.
+engine, that it varies by a factor of four across engines running the *same
+weights*, and that five of the explanations one would reach for first are all
+wrong.
 
 ---
 
@@ -42,7 +44,7 @@ separately.
 | streaming, with `stream_options` | 0.174 s | 1124 tok/s | 0.9955 |
 
 **The three intercepts are 5 milliseconds apart.** The streaming does not add a
-fixed cost. The telemetry flag does not add one. Whatever the 0.18 s is, it is
+fixed cost. The telemetry flag does not add one. Whatever the cost is, it is
 there whichever way the request is made.
 
 **llama.cpp**, same model family, `qwen3.8-27b-q4km.gguf`:
@@ -59,7 +61,7 @@ whether or not the flag is sent, so here the fourth cell — streaming without
 `stream_options`, the one cell that could not be measured at all on TabbyAPI —
 has an engine number too, and it agrees with the rest.
 
-The telemetry flag is innocent. So is streaming. The fixed cost is the engine's.
+The telemetry flag is innocent. So is streaming.
 
 ---
 
@@ -97,87 +99,141 @@ uncached, takes 1.98 s. With 1,792 of those tokens already cached it takes
 0.35 s. The line from D1 predicts 1.965 s and 0.384 s for those two points, and
 across all thirty requests of D2 it is never off by more than 0.035 s.
 
-**The cached tokens are free.** If re-reading the prefix cost anything, the
-cached point would sit above the prediction. It sits slightly below.
+**The cached tokens are free.**
 
 ---
 
-## 3. Three engines, one machine
+## 3. Four engines, three of them on one identical file
 
 Which leaves the question the first piece could not answer, and this time it can
-be answered properly, because all three numbers come from the same instrument.
-Each engine reports the window in its own way — llama.cpp gives `prompt_n` and
-`prompt_ms` side by side, Ollama gives `prompt_eval_duration` in nanoseconds, and
-TabbyAPI gives a rate that has to be inverted — but all three are the engine's
-own clock. Nothing here is a client measuring a server.
+be answered properly, because every window here is the engine's own clock.
+Nothing is a client measuring a server.
 
-| engine | fixed cost | throughput | R² |
-|---|---|---|---|
-| Ollama 0.34.4 | **0.058 s** | 1182 tok/s | 1.0000 |
-| llama.cpp b427 | **0.095 s** | 1105 tok/s | 0.9999 |
-| TabbyAPI / exllamav3 1.5.2 | **0.179 s** | 1133 tok/s | 0.9959 |
+| engine | model | fixed cost | throughput | R² |
+|---|---|---|---|---|
+| Ollama 0.34.4 | `qwen3.8-27b-64k` | **0.058 s** | 1182 tok/s | 1.0000 |
+| llama.cpp b427 | `qwen3.8-27b-llama` | **0.095 s** | 1105 tok/s | 0.9999 |
+| LM Studio 69d945a | `uncensored@q4_k_m` | **0.228 s** | 714 tok/s | 0.9982 |
+| TabbyAPI / exllamav3 | `qwen3.8-27b-4.0bpw` | 0.179 s | 1133 tok/s | 0.9959 |
+| TabbyAPI / exllamav3 | `uncensored-4.0bpw` | 0.211 s | 1102 tok/s | 0.9938 |
 
-**The throughput is the same on all three**, within 7%. **The per-request cost
-is not**: TabbyAPI charges three times what Ollama charges, for the same work on
-the same card.
+**The first three rows are the same file.** Not the same model family — the same
+bytes: `sha256 3445102e…`, 16,811 MB, loaded by three different engines. Same
+weights, same card, same machine, and the per-request cost differs by a factor
+of four, from 0.058 s to 0.228 s. The throughput differs too, by 1.7×, which is
+not what this piece set out to measure and may be the more useful number of the
+two.
 
-This is the result the first piece was reaching for and could not get. For
-someone running one long conversation it does not matter. For an agent making
-four hundred short calls to do one task, it is the difference between 23 seconds
-of overhead and 71.
+**The last two rows are one engine on two different models**, 0.179 s and
+0.211 s. That difference is 32 ms, on two runs made an hour apart, and it is not
+enough to claim that the weights matter. It is enough to say they might, and
+that the four engines here do not separate the engine from the model it is
+running. The claim this piece will stand behind is the narrower one.
+
+For someone running one long conversation none of this matters. For an agent
+making four hundred short calls to do one task, it is 23 seconds of overhead
+against 91.
 
 ---
 
-## 4. What this does to the first piece
+## 4. Five explanations, all wrong
+
+A fixed per-request cost of a tenth of a second invites an obvious reply: it is
+obviously *something*. So each candidate was measured rather than argued about.
+
+| candidate | how it was tested | result |
+|---|---|---|
+| the streaming | the four cells of D1 | **out** — intercepts 5 ms apart |
+| the telemetry flag | the same four cells | **out** — same |
+| re-reading the cached prefix | the 0% and 90% cells of D2 | **out** — cached tokens are free |
+| preparing to generate | sweeping `--max-tokens` at 1, 64 and 256, everything else fixed | **out** — see below |
+| the client's own clock | the engine's timings used throughout | **out** — the window is the engine's |
+
+The generation test is the one that needed a new knob, and it is worth spelling
+out, because the shape of the argument is the shape of all of them. If the
+engine spends that time setting up to write, then letting it write more should
+cost more:
+
+| tokens allowed | fixed cost | throughput | R² |
+|---|---|---|---|
+| 1 | 0.212 s | 1124 tok/s | 0.9967 |
+| 64 | 0.211 s | 1102 tok/s | 0.9938 |
+| 256 | 0.192 s | 1152 tok/s | 0.9949 |
+
+Allowing a model to write **256 times more** moves the fixed cost by 20
+milliseconds, in the wrong direction and inside the noise. Generation setup is
+not it.
+
+**What is left is the part of the engine that receives a request and hands it to
+the model.** Tokenisation, template rendering, slot allocation, whatever the
+engine does at its own front door before the first forward pass begins. This
+data does not separate those, and it would take someone who knows one of these
+engines from the inside — or a much more invasive set of experiments — to do it.
+Five explanations are excluded. The sixth is where the cost lives, and it is
+named rather than measured.
+
+---
+
+## 5. What this does to the first piece
 
 The first piece published a fixed cost of **0.75 s** for the streaming traffic,
 fitted over requests that had been collected by accident. The controlled
-measurement says **0.18 s**, four times smaller, on the same engine and the same
-card.
+measurement says **0.18 s** for the same engine on the base model, and 0.13 s on
+the uncensored one, four to six times smaller.
 
 Both numbers are honest and they are not the same number. The opportunistic fit
-was over real traffic from real clients, with prompts of unknown shape, a
-different model (`qwen3.8-27b-uncensored-4.0bpw`, not the base), a cache that was
+was over real traffic from real clients, with prompts of unknown shape, a cache
 93% full on average, and two sessions a week apart. Every one of those is a
 candidate explanation and this data cannot choose between them.
 
 What it can say is the direction: **the opportunistic estimate was too high, and
 the controlled one is lower.** That is the ordinary direction for this kind of
-error, and it is the reason the first piece called its own number a hypothesis.
+error, and it is why the first piece called its own number a hypothesis.
 
 ---
 
-## 5. What was not done
+## 6. What was not done
 
-- **LM Studio was not measured.** No model is installed for it on this machine,
-  so there is no fourth row. This is not a choice, it is an absence.
-- **The weights are not the same file.** TabbyAPI ran EXL3 at 4.0 bits per
-  weight, llama.cpp and Ollama the same model as GGUF Q4_K_M. The protocol's
-  rule is to compare at equal nominal parameters and quantization and to say so;
-  this is that. A difference in fixed cost between engines running different
-  files could belong to the files.
-- **One machine, one card.** As always: a 3090, on this system, in these
-  sessions. Repeating this on another machine is the experiment worth doing and
-  it has not been done.
-- **The client's clock and the engine's clock are different clocks.** Where an
-  engine reports nothing — Ollama's OpenAI-compatible endpoint reports no timing
-  at all — the client can still measure a first token, but that measurement
-  includes the network and the arrival of the first chunk. The engine comparison
-  above uses only engine clocks for exactly this reason. Mixing them would have
-  produced a difference belonging to the instrument.
+- **The five engines do not run under identical settings.** Each was left on its
+  own defaults — context length, batching, speculation — because that is what a
+  user gets. LM Studio in particular was given a 64k context and reached 714
+  tok/s where llama.cpp on the same file reached 1105. That gap is a fact about
+  the default configurations, not necessarily about the engines underneath, and
+  untangling it is another piece.
+- **One machine, one card.** A 3090, on this system, in these sessions.
+  Repeating this elsewhere remains the experiment worth doing.
+- **The engines were measured one at a time**, because two do not fit on this
+  card together. "In the same session" here means within the same hour, with the
+  environment card captured alongside; it is not the same as interleaved.
+- **The tool could not read every engine the same way.** Four engines, four
+  shapes for the same number:
+
+  | engine | where its window lives |
+  |---|---|
+  | TabbyAPI | `prompt_tokens_per_sec`, a rate, to be inverted |
+  | llama.cpp | `prompt_n` and `prompt_ms`, two numbers to divide |
+  | Ollama | `prompt_eval_duration`, nanoseconds, **native API only** |
+  | LM Studio | `time_to_first_token`, ready, **native API only** |
+
+  Two of the four publish no timing at all on the OpenAI-compatible endpoint
+  that most clients actually use. Anyone comparing engines has been comparing
+  whichever of these four they happened to be able to read.
 
 ---
 
-## 6. Reproduce this
+## 7. Reproduce this
 
-Four commands, and the raw data for all of them is in the repository.
+The raw data for everything above is in the repository, and the comparisons are
+one command each.
 
 ```bash
+# one file per engine and model: a wildcard would pool the control runs
+python3 bench/compare_engines.py \
+    data/2026-10-03-sweep-ollama.jsonl data/2026-10-03-sweep-llamacpp.jsonl \
+    data/2026-10-03-sweep-lmstudio.jsonl data/2026-10-03-sweep-tabbyapi.jsonl
+python3 bench/analyze_d1.py data/2026-10-03-d1-tabbyapi.jsonl
 python3 bench/measure.py sweep --engine ollama --model qwen3.8-27b-64k \
     --lengths 300,1200,2000,4000 --repetitions 5 --out data/ollama.jsonl
-python3 bench/compare_engines.py data/ollama.jsonl
-python3 bench/analyze_d1.py data/2026-10-03-d1-tabbyapi.jsonl
-python3 bench/analyze_d1.py data/2026-10-03-d1-llamacpp.jsonl
 ```
 
 `bench/measure.py` records the engine version on every row, because an engine

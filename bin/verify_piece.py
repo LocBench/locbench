@@ -276,6 +276,10 @@ def check_measurements(esito):
                         ("plain", "inject", "stream+inject", "stream")),
         "ollama sweep": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",)),
         "llamacpp sweep": ("data/2026-10-03-sweep-llamacpp.jsonl", ("plain",)),
+        "lmstudio sweep": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",)),
+        "tabbyapi uncensored": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",)),
+        "max-tokens 1": ("data/2026-10-03-maxtok-1.jsonl", ("plain",)),
+        "max-tokens 256": ("data/2026-10-03-maxtok-256.jsonl", ("plain",)),
     }
     print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
     for label in sorted(sources):
