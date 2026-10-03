@@ -292,6 +292,9 @@ def check_measurements(esito):
         "ollama": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",), "engine_ttft_s"),
         "llamacpp (same file)": ("data/2026-10-03-cfg-8093.jsonl", ("plain",), "engine_ttft_s"),
         "lmstudio": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",), "engine_ttft_s"),
+        # the same engine at half the context, which is what Vulkan will load:
+        # the piece claims the context is not what moved the number
+        "lmstudio at 32k": ("data/2026-10-03-sweep-lmstudio-32k.jsonl", ("plain",), "engine_ttft_s"),
         "tabbyapi": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",), "engine_ttft_s"),
         "control: KV q4_0": ("data/2026-10-03-cfg-8094.jsonl", ("plain",), "engine_ttft_s"),
         "control: 4 slots": ("data/2026-10-03-cfg-8096.jsonl", ("plain",), "engine_ttft_s"),

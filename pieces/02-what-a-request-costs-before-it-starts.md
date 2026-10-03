@@ -233,7 +233,7 @@ obviously *something*. So each candidate was measured rather than argued about.
 | re-reading the cached prefix | the 0% and 90% cells of D2 | **out** — cached tokens are free |
 | preparing to generate | the output budget swept at 1, 64 and 256 tokens | **out** — see below |
 | KV precision, flash attention, parallel slots | llama.cpp run under LM Studio's settings | **out** — 1.5% and 2.5% |
-| the context size | LM Studio's intercept at 32k and at 64k | **out** — 0.220 against 0.225, inside the error |
+| the context size | LM Studio's intercept at 32k and at 64k | **out** — 0.209 against 0.225, inside the error |
 
 The generation test is the one that needed a new knob:
 
@@ -298,7 +298,7 @@ failed to allocate Vulkan0 buffer of size 268435456
 
 At a 32,000-token context it loads. So the measurements in section 4 were taken
 at 32k — and the context is not what moved the number: the same sweep at 64k,
-when it still fitted, gave 0.225 ± 0.041 s against 0.220 ± 0.041 s at 32k.
+when it still fitted, gave 0.225 ± 0.041 s against 0.209 ± 0.039 s at 32k.
 
 On this machine, with this model, **Vulkan is the only backend that works for
 LM Studio, it costs about a third of the prefill throughput, and it cannot
