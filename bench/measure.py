@@ -198,6 +198,14 @@ def local_version(engine):
             (["git", "-C", os.path.expanduser("~/tools/llama.cpp"),
               "describe", "--tags"], "llama.cpp"),
         ],
+        "lmstudio": [
+            (["python3", "-c",
+              "import json,os,subprocess;"
+              "p=os.path.expanduser('~/.lmstudio/bin/lms');"
+              "print(json.loads(subprocess.run([p,'version','--json'],"
+              "capture_output=True,text=True,timeout=20).stdout).get('version',''))"],
+             "LM Studio"),
+        ],
     }.get(engine, [])
     parts = []
     for command, label in sources:
