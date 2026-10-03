@@ -11,7 +11,7 @@ Ready to paste. Lengths are checked by `bin/verify_post.py`.
 <!-- limit: 300 -- a Reddit post title -->
 
 ```
-Four engines, one weight file: per-request cost 0.105 s vs 0.416 s, once you time them all with one clock
+I timed four local engines with one clock instead of four. Then I ran a smaller model and the ranking fell apart
 ```
 
 **Body:**
@@ -19,10 +19,8 @@ Four engines, one weight file: per-request cost 0.105 s vs 0.416 s, once you tim
 ```
 My first post here looked at what `prompt_tokens_per_sec` actually measures --
 uncached tokens over time-to-first-token -- and found a fixed cost per request
-that the metric spreads over the few new tokens.
-
-This is the controlled version, on four engines. It is also a correction to my
-own method, so that comes first.
+that the metric spreads over the few new tokens. This is the controlled version,
+and it cost me a correction to my own method first.
 
 **The engine's own clock is not one clock.** Every engine publishes something it
 calls the prompt time, and they are not the same interval. Over the same
@@ -32,16 +30,13 @@ streamed requests -- same client, same lengths, same minute:
     TabbyAPI    own clock 0.149 s   client's clock 0.273 s  124 ms untimed
 
 llama.cpp stops its clock when the prompt has been evaluated; TabbyAPI when the
-first token has been sampled; neither covers getting the bytes out. Ranking
-engines by subtracting one from the other charges the difference between two
-stopwatches to the engine. My earlier table did exactly that.
+first token has been sampled. Ranking engines by subtracting one from the other
+charges the difference between two stopwatches to the engine -- which my earlier
+table did. And on the OpenAI endpoint, the one every client actually speaks,
+Ollama and LM Studio publish token counts and **no timings at all**, so "the
+engine's own clock" was a comparison of two engines out of four.
 
-And on the OpenAI-compatible endpoint -- the one every client actually speaks --
-Ollama and LM Studio publish token counts and **no timings at all**. So "the
-engine's own clock" was, on that surface, a comparison of two engines out of
-four.
-
-**On one clock, all four, streamed. Same cell, same lengths:**
+**On one clock, all four, streamed, same weight file:**
 
 | engine | fixed cost | throughput |
 |---|---|---|
@@ -51,12 +46,29 @@ four.
 | LM Studio 69d945a | 0.416 ± 0.061 s | 729 tok/s |
 
 Ollama, llama.cpp and LM Studio are the **same file** -- `sha256 3445102e...`,
-16,811 MB, verified by hash. Per-request cost differs 4.0x.
+16,811 MB, verified by hash, and two of them load it through a symlink into
+Ollama's blob store. Per-request cost differs 4.0x.
 
-The two clocks agree on the slope and disagree on the intercept, which is
-exactly what a constant per-request offset does to a line. llama.cpp: 1145 tok/s
-on the client's clock, 1152 on its own. If the gap were an artefact of measuring
-different things, it would move the slope too. It does not.
+**Then I ran Qwen3-8B, and the ranking did not survive.** Same cell, same
+client, same lengths, a third of the size:
+
+| model | engine | fixed cost |
+|---|---|---|
+| 27B | Ollama | 0.105 ± 0.007 s |
+| 27B | llama.cpp | 0.161 ± 0.010 s |
+| 8B | llama.cpp | 0.040 ± 0.010 s |
+| 8B | Ollama | 0.046 ± 0.010 s |
+| 8B | LM Studio | 0.114 ± 0.055 s |
+
+On the 27B, Ollama is 56 ms faster per request than llama.cpp at 4.6 sigma. On
+the 8B the two are **6 ms apart at 0.4 sigma** -- nothing -- and llama.cpp is
+nominally in front. On the 8B no pair of engines is separated at all. The cost
+isn't fixed either: llama.cpp's falls from 0.161 s to 0.040 s, a factor of four
+where the model is a factor of 3.5 smaller, which puts it in the first forward
+pass and the buffers it is handed rather than at the front door.
+
+The one thing that holds on both is LM Studio being last, and how strongly that
+holds changes too: 4.1 sigma on the 27B, 1.3 on the 8B.
 
 **If you run LM Studio on an NVIDIA card, this is the part worth your time.** It
 is 36% slower than llama.cpp on the identical file, and it is not LM Studio:
@@ -67,16 +79,14 @@ is 36% slower than llama.cpp on the identical file, and it is not LM Studio:
 
 It runs the **Vulkan** build. Selecting CUDA makes it abort inside
 `llama_context`, or load without offloading at all -- 756 MiB of VRAM, the model
-in system memory, a minute per short request. And at a 64k context it now fails
-to allocate the 256 MiB its speculative decoding context wants, with 23 GB
-nominally free. On this machine Vulkan is the only backend that works, and it
-costs about a third of the prefill throughput.
+in system memory, a minute per short request. And at a 64k context it fails to
+allocate the 256 MiB its speculative decoding context wants, with 23 GB nominally
+free.
 
-**One more, if you ever report prompt length in words.** I ran the same sweep on
-real prose from my own repository, alternating with the synthetic vocabulary to
-control for the card warming up. The fixed cost moves 0.097 -> 0.111 s, the
-throughput does not move, and the vocabulary-to-prose step reverses when it
-goes back. But the interesting part is the token count:
+**Last thing, if you ever report prompt length in words.** I ran the sweep on
+real prose, alternating with the synthetic vocabulary to control for the card
+warming up. The fixed cost moves 0.097 -> 0.111 s and the throughput does not
+move. But:
 
     20 words    84 tokens (vocabulary)   107 and 117 (prose)
     60 words   124                       167 and 234
@@ -85,16 +95,16 @@ goes back. But the interesting part is the token count:
 A word is not a unit of work. The same word count is 1.3x to 1.6x as many
 tokens, and **up to 40% more between two passages of prose of the same length**.
 
-**Two corrections to my own earlier posts, both mine to make.** An earlier
-version said three engines ran the same weight file; the llama.cpp *service* was
-loading a different GGUF, 32 bytes apart out of 16.8 GB. And an earlier fit over
-four lengths instead of seven gave llama.cpp 0.090 s instead of 0.106 -- the
-intercept is an extrapolation and the shortest prompt decides how far.
+**Two corrections to my own earlier posts.** An earlier version said three
+engines ran the same weight file; the llama.cpp *service* was loading a different
+GGUF, 32 bytes apart out of 16.8 GB. And an earlier fit over four lengths instead
+of seven gave llama.cpp 0.090 s instead of 0.106 -- the intercept is an
+extrapolation and the shortest prompt decides how far.
 
-Six other explanations are dead, each measured rather than argued: not the
-streaming, not the telemetry flag, not re-reading the cached prefix, not
-preparing to generate, not KV precision or flash attention or slot count, not
-the context size.
+Seven explanations are dead, each measured rather than argued: not the streaming,
+not the telemetry flag, not re-reading the cached prefix, not preparing to
+generate, not KV precision or flash attention or slot count, not the context
+size, not the speculative decoding.
 
 Data, client, analysis scripts and environment card are in the repo:
 [REPO LINK]
@@ -126,7 +136,7 @@ llama.cpp   0.161 s
 TabbyAPI    0.273 s
 LM Studio   0.416 s
 
-Their own reported windows say 0.098 and 0.149. They leave 63 ms and 124 ms of each request untimed.
+Then I ran an 8B: llama.cpp 0.040, Ollama 0.046. The ranking doesn't survive the smaller model.
 ```
 
 ---

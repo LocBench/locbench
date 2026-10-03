@@ -13,12 +13,14 @@ and not measurably in the ones that were not (0.114 s), but the two groups did
 not overlap in length, one of them was a single client, and that client was the
 only one that did not ask for telemetry.
 
-This is the controlled version. The answer is that the cost belongs to the
-engine, that four engines running the **same weight file** differ by a factor of
-4, and that six of the explanations one would reach for first are all wrong.
+This is the controlled version, and it does not end where it set out. Four
+engines running the **same weight file** differ by a factor of 4 in what they
+charge before they work, and seven of the explanations one would reach for first
+are all wrong. But the ordering does not survive a change of model, and finding
+that out is the most useful thing here.
 
-It also cost this piece a correction to its own method, and that correction is
-the most useful thing here — so it comes before the numbers.
+It also cost this piece a correction to its own method, and that correction
+comes before the numbers.
 
 ---
 
@@ -216,12 +218,53 @@ the client's clock is a time to first token on all four and not, on any of them,
 the whole reply.
 
 For someone running one long conversation none of this matters. For an agent
-making four hundred short calls to do one task, the difference between Ollama
-and LM Studio is 42 seconds of overhead against 166.
+making four hundred short calls to do one task on the 27B, the difference
+between Ollama and LM Studio is 42 seconds of overhead against 166.
+
+### The ranking is not the engines' to keep
+
+Everything above is Qwen3.8-27B, and the sentence that admitted it said nothing
+about whether a smaller model behaves the same way. So the same streamed cell was
+run on Qwen3-8B — same quantization, same client, same lengths, and the same
+file loaded by three programs.
+
+It was meant to be a confirmation. It is not.
+
+| model | engine | fixed cost, the client's clock | its own clock |
+|---|---|---|---|
+| 27B | Ollama | 0.105 ± 0.007 s | — not published |
+| 27B | llama.cpp | 0.161 ± 0.010 s | 0.098 ± 0.003 s |
+| 27B | TabbyAPI | 0.273 ± 0.044 s | 0.149 ± 0.043 s |
+| 27B | LM Studio | 0.416 ± 0.061 s | — not published |
+| 8B | llama.cpp | **0.040 ± 0.010 s** | 0.003 ± 0.005 s |
+| 8B | Ollama | **0.046 ± 0.010 s** | — not published |
+| 8B | LM Studio | **0.114 ± 0.055 s** | — not published |
+
+**The cost is not fixed.** On llama.cpp it is 0.161 s on the 27B and 0.040 s on
+the 8B: a factor of four, where the model is a factor of three and a half
+smaller. LM Studio moves by 3.6, Ollama by 2.3. A per-request cost that follows
+the size of the model is not the front door — it is in the first forward pass, or
+in the buffers that pass has to be handed, and those grow with the model. This is
+what is left after section 5, and it has a shape now.
+
+**And the order changes.** On the 27B, Ollama is 56 ms faster per request than
+llama.cpp at 4.6σ. On the 8B the two are **6 ms apart at 0.4σ**, which is
+nothing, and llama.cpp is nominally in front. On the 8B no pair of engines is
+separated at all — 0.4, 1.2 and 1.3σ — where on the 27B three pairs were.
+
+The one thing that holds on both models is that LM Studio is last, and how
+strongly it holds differs too: 4.1σ on the 27B, 1.3σ on the 8B. **The table at
+the top of this section is a table about four engines running one model, and
+anyone who reads "Ollama is cheapest per request" as a general statement has read
+more than was measured.**
+
+TabbyAPI is missing from the 8B rows because it executes EXL3 and a GGUF is not
+an EXL3. Three engines, not four, and the piece says so rather than leaving a
+hole in a table.
 
 ---
 
-## 5. Six explanations, all wrong
+## 5. Seven explanations, all wrong
 
 A fixed per-request cost of a tenth of a second invites an obvious reply: it is
 obviously *something*. So each candidate was measured rather than argued about.
@@ -234,6 +277,7 @@ obviously *something*. So each candidate was measured rather than argued about.
 | preparing to generate | the output budget swept at 1, 64 and 256 tokens | **out** — see below |
 | KV precision, flash attention, parallel slots | llama.cpp run under LM Studio's settings | **out** — 1.5% and 2.5% |
 | the context size | LM Studio's intercept at 32k and at 64k | **out** — 0.209 against 0.225, inside the error |
+| the speculative decoding | llama.cpp's 27B with and without `--spec-type draft-mtp` | **out** — 3 ms apart on its own clock, 1 ms on the client's |
 
 The generation test is the one that needed a new knob:
 
@@ -252,13 +296,20 @@ times on the same file — flash attention on with `q8_0` KV, flash attention on
 with `q4_0` KV, and four parallel slots instead of one — and came out at 1140,
 1123 and 1112 tok/s. A 2.5% spread against a gap of 36%.
 
+The last row was not a hypothesis either. Section 4's second model showed a
+fixed cost thirty times smaller on the 8B than on the 27B, and the one flag that
+differed between those two runs was the speculative decoding the 27B had and the
+8B had no draft file for. Running the 27B without it answers that: 0.095 ±
+0.003 s against 0.098 ± 0.003 s. The flag is not it, and the measurement that
+follows the model survives.
+
 **What is left is the part of the engine that receives a request and hands it to
-the model.** Tokenisation, template rendering, slot allocation, whatever happens
-at the front door before the first forward pass. This data does not separate
-those, and it would take someone who knows one of these engines from the inside
-to do it. Six explanations are excluded. The seventh is where the cost lives, and
-it is named rather than measured — except that section 7 measures one piece of
-it.
+the model.** Tokenisation, template rendering, slot allocation, and — since
+section 4 showed the cost tracking the size of the model — the first forward pass
+and the buffers it is handed. This data does not separate those, and it would
+take someone who knows one of these engines from the inside to do it. Seven
+explanations are excluded. Section 7 measures one small piece of what remains,
+and says so.
 
 ---
 
@@ -394,8 +445,14 @@ measures it: 1.3x to 1.6x, and up to 40% between two prompts of the same length.
 **Not done.**
 
 - **One machine, one card.** A 3090, on this system, in these sessions.
-- **One model.** Everything here is Qwen3.8-27B. Nothing says a 7B or a 70B
-  behaves the same way.
+- **Two models, and they disagree.** What began as a confirmation on an 8B
+  turned into the finding that the ordering is not the engines' to keep: Ollama's
+  advantage over llama.cpp is 4.6σ on the 27B and 0.4σ on the 8B. Two models is
+  enough to show the ordering is not general and not enough to say what it is. A
+  70B would be the next one, and it does not fit on this card at this
+  quantization.
+- **TabbyAPI could not run the second model**, because it executes EXL3 and a
+  GGUF is not an EXL3. Converting one is possible and was not done.
 - **The engines were measured one at a time**, because two do not fit on this
   card together. "In the same session" means within the same hour, with the
   environment card captured alongside.
@@ -441,7 +498,20 @@ python3 bench/analyze_d1.py data/2026-10-03-d1-tabbyapi.jsonl
 python3 bench/compare_engines.py --cell plain \
     data/2026-10-03-ordine-vocab-1.jsonl data/2026-10-03-ordine-corpus-1.jsonl \
     data/2026-10-03-ordine-vocab-2.jsonl data/2026-10-03-ordine-corpus-2.jsonl
+
+# the second model, and the flag that is not the explanation
+python3 bench/compare_engines.py --cell stream \
+    data/2026-10-03-otto-stream-llamacpp.jsonl data/2026-10-03-otto-stream-ollama.jsonl \
+    data/2026-10-03-otto-stream-lmstudio.jsonl
+python3 bench/compare_engines.py --cell stream \
+    data/2026-10-03-stream-llamacpp.jsonl data/2026-10-03-nomtp-stream-llamacpp.jsonl
 ```
+
+The last command will print a `POOLED` warning, and it is right to: llama.cpp's
+27B with and without speculative decoding carry the same engine and the same
+model, so the tool cannot tell them apart as two runs. Read the two rows in the
+gate's output instead, which fits each file on its own — that is the comparison,
+and it is the one case in this piece where pooling is the wrong answer.
 
 `bench/measure.py` records the engine version on every row, because an engine
 update moves these numbers and without the version a regression and a

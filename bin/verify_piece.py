@@ -315,8 +315,10 @@ def check_measurements(esito):
         "8B CLIENT llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
         "8B CLIENT lmstudio": ("data/2026-10-03-otto-stream-lmstudio.jsonl", ("stream",), "client_ttft_s"),
         "8B ENGINE llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
-        "8B no-MTP CLIENT llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
-        "8B no-MTP ENGINE llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
+        # the 27B without speculative decoding, which is the control that says
+        # the flag is not what makes the fixed cost follow the model
+        "27B no-MTP CLIENT llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "27B no-MTP ENGINE llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
         # ---- the prose control, and the counterbalance for its order ----------
         "prose: vocabulary": ("data/2026-10-03-prosa-vocab.jsonl", ("plain",), "engine_ttft_s"),
         "prose: real prose": ("data/2026-10-03-prosa-corpus.jsonl", ("plain",), "engine_ttft_s"),
