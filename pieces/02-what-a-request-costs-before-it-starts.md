@@ -189,9 +189,9 @@ differences worth stating as such:
 | llama.cpp — TabbyAPI | 112 ms | 45 ms | 2.5σ |
 | TabbyAPI — LM Studio | 143 ms | 75 ms | **1.9σ** |
 
-**The two ends are 4.0x apart and that is 5.1 sigma** — the widest the interval
-allows is 3.2x and the narrowest 4.9x, so the factor survives its own error
-bars. **The middle of the field does not.** TabbyAPI and LM Studio are 1.9σ
+**The two ends are 4.0x apart and that is 5.1 sigma** — the narrowest the
+intervals allow is 3.2x and the widest 4.9x, so the factor survives its own
+error bars. **The middle of the field does not.** TabbyAPI and LM Studio are 1.9σ
 apart, which is not a separation, and llama.cpp is 2.5σ from TabbyAPI. Three of
 the four could be reordered by a better measurement of any one of them, and this
 piece does not claim otherwise.
