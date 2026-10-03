@@ -213,6 +213,20 @@ def test_the_sweep_sends_a_fresh_prompt_every_time(engine, tmp_path):
     assert len(prompts) == len(set(prompts)), "a whole prompt was repeated"
 
 
+def test_the_sweep_can_hold_the_generation_length_fixed(engine, tmp_path):
+    """Varying how much the model may write back is how the fixed cost is asked
+    whether it has anything to do with setting generation up.
+
+    If the intercept moves when only the generation budget changes, then part of
+    what looked like a per-request cost is the cost of preparing to write. If it
+    does not move, that explanation is out. Either way the control has to
+    actually reach the request.
+    """
+    session, _ = a_session(engine, tmp_path)
+    measure.experiment_sweep(session, [40, 80], max_tokens=7)
+    assert {p.get("max_tokens") for p in FakeEngine.received} == {7}
+
+
 def test_a_failed_request_is_recorded_not_dropped(engine, tmp_path):
     """The rule from the protocol: a measurement that disappears without
     explanation is how a bench lies."""

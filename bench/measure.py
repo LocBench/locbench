@@ -582,7 +582,7 @@ def experiment_d2(session, words, fractions):
             session.sleep()
 
 
-def ollama_native(url, model, prompt, timeout=600):
+def ollama_native(url, model, prompt, max_tokens=16, timeout=600):
     """The window as Ollama reports it, on the API it reports it on.
 
     Ollama's OpenAI-compatible endpoint publishes token counts and no timings
@@ -597,7 +597,7 @@ def ollama_native(url, model, prompt, timeout=600):
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_predict": 16, "temperature": 0},
+        "options": {"num_predict": max_tokens, "temperature": 0},
     }, timeout=timeout)
     if status != 200 or not isinstance(body, dict):
         return None
@@ -621,7 +621,48 @@ def ollama_native(url, model, prompt, timeout=600):
     }
 
 
-def experiment_sweep(session, lengths):
+def lmstudio_native(url, model, prompt, max_tokens=16, timeout=600):
+    """The window as LM Studio reports it: ready to use.
+
+    Its OpenAI-compatible endpoint returns token counts and no timings. The
+    native one returns a `stats` block with `time_to_first_token` already
+    computed -- not a rate to invert and not two numbers to divide, which makes
+    it the fourth shape the same quantity arrives in on this machine:
+
+        TabbyAPI    a rate, which has to be inverted
+        llama.cpp   prompt_n and prompt_ms, side by side
+        Ollama      prompt_eval_duration, in nanoseconds
+        LM Studio   time_to_first_token, ready
+
+    Four engines, four ways of saying one thing, and none of them the same.
+    """
+    status, body, raw = post_json(url.rstrip("/") + "/api/v0/chat/completions", {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0,
+        "stream": False,
+    }, timeout=timeout)
+    if status != 200 or not isinstance(body, dict):
+        return None
+    stats = body.get("stats") or {}
+    usage = body.get("usage") or {}
+    ttft = stats.get("time_to_first_token")
+    prompt_tokens = usage.get("prompt_tokens")
+    if ttft is None or not prompt_tokens:
+        return None
+    return {
+        "uncached": int(prompt_tokens),
+        "cached_tokens": 0,
+        "engine_ttft_s": round(ttft, 4),
+        "reported_tps": round(prompt_tokens / ttft, 2) if ttft else None,
+        "completion_tokens": usage.get("completion_tokens"),
+        "generation_tps": stats.get("tokens_per_second"),
+        "window_from": "engine timings",
+    }
+
+
+def experiment_sweep(session, lengths, max_tokens=64):
     """The plain request at several lengths, on whichever API gives the engine's
     own window.
 
@@ -635,7 +676,10 @@ def experiment_sweep(session, lengths):
     and using the OpenAI path would mean comparing a client's clock with an
     engine's.
     """
-    native = session.engine == "ollama"
+    # Engines whose OpenAI-compatible endpoint publishes no timing at all have
+    # to be asked on the API that does. Two of the four are like that, and each
+    # one keeps its window somewhere different.
+    native = {"ollama": ollama_native, "lmstudio": lmstudio_native}.get(session.engine)
     for repetition in range(1, session.repetitions + 1):
         for words in lengths:
             # The shared half is seeded with the repetition as well as the
@@ -649,7 +693,7 @@ def experiment_sweep(session, lengths):
             prompt = build_prompt(100_000 + words * 7 + repetition * 1_000_003,
                                   words, 800_000 + repetition * 13 + words, 40)
             if native:
-                clock = ollama_native(session.url, session.model, prompt)
+                clock = native(session.url, session.model, prompt, max_tokens=max_tokens)
                 if clock is None:
                     row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "engine": session.engine, "version": session.version,
@@ -661,7 +705,8 @@ def experiment_sweep(session, lengths):
                            "model": session.model, "discarded": False, "reason": None}
                     row.update(clock)
             else:
-                row = session.request(prompt, stream=False, inject_usage=False)
+                row = session.request(prompt, stream=False, inject_usage=False,
+                                      max_tokens=max_tokens)
             row["words"] = words
             row = session.keep(row, "sweep", "plain@%d" % words, repetition)
             if session.verbose:
@@ -766,6 +811,10 @@ def main():
                     help="for d2: the cached fractions to ask for")
     ap.add_argument("--lengths", default="300,1200,2000,4000",
                     help="for sweep: the prompt lengths to walk, in words")
+    ap.add_argument("--max-tokens", type=int, default=64,
+                    help="how much the model may write back. Held fixed, this is a "
+                         "control; varied, it asks whether the fixed cost has "
+                         "anything to do with setting generation up")
     args = ap.parse_args()
 
     url = args.url or ENGINES[args.engine]["url"]
@@ -804,7 +853,7 @@ def main():
 
     if args.experiment == "sweep":
         lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
-        experiment_sweep(session, lengths)
+        experiment_sweep(session, lengths, args.max_tokens)
     elif args.experiment == "d1":
         experiment_d1(session, args.words)
     elif args.experiment == "d3":
