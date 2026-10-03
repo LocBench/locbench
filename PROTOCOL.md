@@ -232,7 +232,7 @@ generic name. If a metric cannot be defined unambiguously, it is not published.
 | metric | operational definition |
 |---|---|
 | **time to first token (TTFT)** | from the start of the prompt window to the first sampled token — what the engines call prefill time |
-| **reported prompt rate** | `uncached_tokens / TTFT` — what the engine declares |
+| **reported prompt rate** | `uncached_tokens / TTFT` — what the engine declares, **where it declares anything** (see below) |
 | **true prompt throughput** | the slope of the time-vs-token line, at fixed cache |
 | **fixed cost** | the intercept of that same line, in seconds per request |
 | **generation** | `completion_tokens / generation_time` |
@@ -241,6 +241,15 @@ generic name. If a metric cannot be defined unambiguously, it is not published.
 
 **Generation is always measured separately from the prompt.** A number that mixes
 the two says nothing.
+
+**Not every engine publishes a rate, and that is part of the result.** TabbyAPI
+does, and its field can be inverted to recover the window. Ollama's
+OpenAI-compatible endpoint publishes token counts and **no timing at all** —
+`prompt_tokens_per_sec` is simply not there — so on that engine the window can
+only be measured by the client. The measurement client therefore always times
+the window itself and treats the engine's number as a cross-check where one
+exists, rather than as the source. A comparison across engines has to say which
+of the two it is quoting, because for one of them there is no choice.
 
 Note that the first two rows are the correction this protocol owes to itself: the
 field the engines call "prompt tokens per second" is the *reported prompt rate*,
