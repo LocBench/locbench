@@ -187,6 +187,32 @@ def test_d2_nests_the_shared_prefix_and_keeps_tails_fresh(engine, tmp_path):
 
 # ------------------------------------------------------ what gets written
 
+def test_the_sweep_sends_a_fresh_prompt_every_time(engine, tmp_path):
+    """Every request in a sweep has to be new text.
+
+    Seeding the shared half with the length alone made each repetition of the
+    same length send the same prefix, and llama.cpp's prefix cache reused it --
+    `cached_tokens` came back at 790, 1590 and 3590 where it should have been
+    zero. The fit survived because it uses the uncached count the engine
+    reports, but the measurement was no longer the one being asked for, and a
+    dataset that is quietly right for the wrong reason is worse than one that
+    is visibly wrong.
+    """
+    # Two repetitions, not one: with a single pass there is no earlier request
+    # for a cache to match against, and the bug is invisible.
+    session, _ = a_session(engine, tmp_path, repetitions=2)
+    measure.experiment_sweep(session, [40, 80])
+    prompts = [p["messages"][0]["content"] for p in FakeEngine.received]
+
+    # The whole prompt differing is not enough, and checking only that is how
+    # the first version of this test passed while the bug was still there: the
+    # tail changes every time, so the prompts were all distinct while the prefix
+    # -- the only part a cache can reuse -- was identical between repetitions.
+    prefixes = [p.split("Section B.")[0] for p in prompts]
+    assert len(prefixes) == len(set(prefixes)), "a shared prefix was reused"
+    assert len(prompts) == len(set(prompts)), "a whole prompt was repeated"
+
+
 def test_a_failed_request_is_recorded_not_dropped(engine, tmp_path):
     """The rule from the protocol: a measurement that disappears without
     explanation is how a bench lies."""

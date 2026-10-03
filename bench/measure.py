@@ -638,7 +638,16 @@ def experiment_sweep(session, lengths):
     native = session.engine == "ollama"
     for repetition in range(1, session.repetitions + 1):
         for words in lengths:
-            prompt = build_prompt(100_000 + words * 7, words, 800_000 + repetition * 13 + words, 40)
+            # The shared half is seeded with the repetition as well as the
+            # length. Seeding it with the length alone made every repetition of
+            # the same length produce the same prefix, and llama.cpp's prefix
+            # cache quietly reused it -- `cached_tokens` came back at 790, 1590
+            # and 3590 where it should have been zero. The fit survived it
+            # because it works from the uncached count the engine reports and
+            # not from the label, but the measurement was no longer the one
+            # being asked for.
+            prompt = build_prompt(100_000 + words * 7 + repetition * 1_000_003,
+                                  words, 800_000 + repetition * 13 + words, 40)
             if native:
                 clock = ollama_native(session.url, session.model, prompt)
                 if clock is None:
