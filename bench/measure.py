@@ -582,6 +582,84 @@ def experiment_d2(session, words, fractions):
             session.sleep()
 
 
+def ollama_native(url, model, prompt, timeout=600):
+    """The window as Ollama reports it, on the API it reports it on.
+
+    Ollama's OpenAI-compatible endpoint publishes token counts and no timings
+    at all. Its native API publishes `prompt_eval_duration` in nanoseconds --
+    the window itself, not a rate to be inverted. Without this path Ollama
+    cannot take part in an engine comparison except through the client's clock,
+    which measures a different quantity.
+
+    Returns a partial row, or None if the engine did not answer as expected.
+    """
+    status, body, raw = post_json(url.rstrip("/") + "/api/chat", {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        "options": {"num_predict": 16, "temperature": 0},
+    }, timeout=timeout)
+    if status != 200 or not isinstance(body, dict):
+        return None
+    prompt_count = body.get("prompt_eval_count")
+    prompt_ns = body.get("prompt_eval_duration")
+    eval_count = body.get("eval_count")
+    eval_ns = body.get("eval_duration")
+    if not prompt_ns or prompt_count is None:
+        return None
+    # Ollama reports the total prompt it evaluated here, cached tokens included:
+    # this endpoint has no prefix cache to report against, which is itself worth
+    # knowing when the numbers are compared with the OpenAI path.
+    return {
+        "uncached": int(prompt_count),
+        "cached_tokens": 0,
+        "engine_ttft_s": round(prompt_ns / 1e9, 4),
+        "reported_tps": round(prompt_count / (prompt_ns / 1e9), 2),
+        "completion_tokens": int(eval_count) if eval_count else None,
+        "generation_tps": round(eval_count / (eval_ns / 1e9), 2) if (eval_count and eval_ns) else None,
+        "window_from": "engine timings",
+    }
+
+
+def experiment_sweep(session, lengths):
+    """The plain request at several lengths, on whichever API gives the engine's
+    own window.
+
+    This is the experiment D3 needs. The four cells of D1 answer whether
+    streaming or the flag adds a cost; they do not, on their own, compare one
+    engine with another, because the comparison needs an intercept and an
+    intercept needs several lengths.
+
+    On engines that report timings on the OpenAI surface, that path is used. On
+    Ollama it is not: there the native API is the only one that says anything,
+    and using the OpenAI path would mean comparing a client's clock with an
+    engine's.
+    """
+    native = session.engine == "ollama"
+    for repetition in range(1, session.repetitions + 1):
+        for words in lengths:
+            prompt = build_prompt(100_000 + words * 7, words, 800_000 + repetition * 13 + words, 40)
+            if native:
+                clock = ollama_native(session.url, session.model, prompt)
+                if clock is None:
+                    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "engine": session.engine, "version": session.version,
+                           "model": session.model, "discarded": True,
+                           "reason": "the native API did not answer as expected"}
+                else:
+                    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "engine": session.engine, "version": session.version,
+                           "model": session.model, "discarded": False, "reason": None}
+                    row.update(clock)
+            else:
+                row = session.request(prompt, stream=False, inject_usage=False)
+            row["words"] = words
+            row = session.keep(row, "sweep", "plain@%d" % words, repetition)
+            if session.verbose:
+                print("    %6d words -> %s" % (words, _summary(row)), flush=True)
+            session.sleep()
+
+
 def experiment_d3(session, words):
     """The same four cells as D1, on whatever engine this session is pointed at.
 
@@ -665,7 +743,7 @@ def _count(rows, key):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("experiment", choices=["d1", "d2", "d3", "warmup"])
+    ap.add_argument("experiment", choices=["d1", "d2", "d3", "sweep", "warmup"])
     ap.add_argument("--engine", default="tabbyapi", choices=sorted(ENGINES))
     ap.add_argument("--url", help="override the engine's default address")
     ap.add_argument("--model", required=False, help="the model name the engine knows")
@@ -676,6 +754,8 @@ def main():
     ap.add_argument("--out", help="JSONL to append to")
     ap.add_argument("--fractions", default="0,0.25,0.5,0.75,0.9,0.99",
                     help="for d2: the cached fractions to ask for")
+    ap.add_argument("--lengths", default="300,1200,2000,4000",
+                    help="for sweep: the prompt lengths to walk, in words")
     args = ap.parse_args()
 
     url = args.url or ENGINES[args.engine]["url"]
@@ -712,7 +792,10 @@ def main():
         print("\n  warm-up only, nothing recorded.")
         return 0
 
-    if args.experiment == "d1":
+    if args.experiment == "sweep":
+        lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
+        experiment_sweep(session, lengths)
+    elif args.experiment == "d1":
         experiment_d1(session, args.words)
     elif args.experiment == "d3":
         experiment_d3(session, args.words)
