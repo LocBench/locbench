@@ -497,15 +497,15 @@ python3 bench/analyze_d1.py data/2026-10-03-d1-tabbyapi.jsonl
 
 # prose against the fixed vocabulary, and the order control
 python3 bench/compare_engines.py --cell plain \
-    data/2026-10-03-ordine-vocab-1.jsonl data/2026-10-03-ordine-corpus-1.jsonl \
-    data/2026-10-03-ordine-vocab-2.jsonl data/2026-10-03-ordine-corpus-2.jsonl
+    data/2026-10-03-order-vocab-1.jsonl data/2026-10-03-order-corpus-1.jsonl \
+    data/2026-10-03-order-vocab-2.jsonl data/2026-10-03-order-corpus-2.jsonl
 
 # the second model, and the flag that is not the explanation
 python3 bench/compare_engines.py --cell stream \
-    data/2026-10-03-otto-stream-llamacpp.jsonl data/2026-10-03-otto-stream-ollama.jsonl \
-    data/2026-10-03-otto-stream-lmstudio.jsonl
+    data/2026-10-03-qwen3-8b-stream-llamacpp.jsonl data/2026-10-03-qwen3-8b-stream-ollama.jsonl \
+    data/2026-10-03-qwen3-8b-stream-lmstudio.jsonl
 python3 bench/compare_engines.py --cell stream \
-    data/2026-10-03-stream-llamacpp.jsonl data/2026-10-03-nomtp-stream-llamacpp.jsonl
+    data/2026-10-03-stream-llamacpp.jsonl data/2026-10-03-no-mtp-stream-llamacpp.jsonl
 ```
 
 The last command will print a `POOLED` warning, and it is right to: llama.cpp's

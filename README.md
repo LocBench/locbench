@@ -139,3 +139,11 @@ The piece published so far is in [`pieces/`](pieces/).
 > Everything here is in English: this file, the protocol, the pieces, the commit
 > messages, the file and directory names, the analysis output and the CSV column
 > names. Nothing is left in another language for a reader to stumble into.
+
+One exception, and it is a recorded value rather than a sentence. The `client`
+field of `data/2026-09-usage.jsonl` carries whatever name each request sent —
+`batteria/1.0`, `prova-effort/low`, `salute-gpu/1.0` — because those are the
+names the throwaway scripts called themselves by. The protocol declares them and
+says where they came from; rewriting them would be editing the measurement to
+tidy the prose. **Names chosen here are held to the rule; values recorded are
+published as recorded.** `tests/test_language.py` enforces the first half.

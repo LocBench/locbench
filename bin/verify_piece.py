@@ -311,23 +311,23 @@ def check_measurements(esito):
         "ENGINE ollama": ("data/2026-10-03-stream-ollama.jsonl", ("stream",), "engine_ttft_s"),
         "ENGINE lmstudio": ("data/2026-10-03-stream-lmstudio.jsonl", ("stream",), "engine_ttft_s"),
         # ---- the second model: a third the size, same client ------------------
-        "8B CLIENT ollama": ("data/2026-10-03-otto-stream-ollama.jsonl", ("stream",), "client_ttft_s"),
-        "8B CLIENT llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
-        "8B CLIENT lmstudio": ("data/2026-10-03-otto-stream-lmstudio.jsonl", ("stream",), "client_ttft_s"),
-        "8B ENGINE llamacpp": ("data/2026-10-03-otto-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
+        "8B CLIENT ollama": ("data/2026-10-03-qwen3-8b-stream-ollama.jsonl", ("stream",), "client_ttft_s"),
+        "8B CLIENT llamacpp": ("data/2026-10-03-qwen3-8b-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "8B CLIENT lmstudio": ("data/2026-10-03-qwen3-8b-stream-lmstudio.jsonl", ("stream",), "client_ttft_s"),
+        "8B ENGINE llamacpp": ("data/2026-10-03-qwen3-8b-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
         # the 27B without speculative decoding, which is the control that says
         # the flag is not what makes the fixed cost follow the model
-        "27B no-MTP CLIENT llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
-        "27B no-MTP ENGINE llamacpp": ("data/2026-10-03-nomtp-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
+        "27B no-MTP CLIENT llamacpp": ("data/2026-10-03-no-mtp-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "27B no-MTP ENGINE llamacpp": ("data/2026-10-03-no-mtp-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
         # ---- the prose control, and the counterbalance for its order ----------
-        "prose: vocabulary": ("data/2026-10-03-prosa-vocab.jsonl", ("plain",), "engine_ttft_s"),
-        "prose: real prose": ("data/2026-10-03-prosa-corpus.jsonl", ("plain",), "engine_ttft_s"),
-        "order 1 vocabulary": ("data/2026-10-03-ordine-vocab-1.jsonl", ("plain",), "engine_ttft_s"),
-        "order 1 prose": ("data/2026-10-03-ordine-corpus-1.jsonl", ("plain",), "engine_ttft_s"),
-        "order 2 vocabulary": ("data/2026-10-03-ordine-vocab-2.jsonl", ("plain",), "engine_ttft_s"),
-        "order 2 prose": ("data/2026-10-03-ordine-corpus-2.jsonl", ("plain",), "engine_ttft_s"),
+        "prose: vocabulary": ("data/2026-10-03-prose-vocab.jsonl", ("plain",), "engine_ttft_s"),
+        "prose: real prose": ("data/2026-10-03-prose-corpus.jsonl", ("plain",), "engine_ttft_s"),
+        "order 1 vocabulary": ("data/2026-10-03-order-vocab-1.jsonl", ("plain",), "engine_ttft_s"),
+        "order 1 prose": ("data/2026-10-03-order-corpus-1.jsonl", ("plain",), "engine_ttft_s"),
+        "order 2 vocabulary": ("data/2026-10-03-order-vocab-2.jsonl", ("plain",), "engine_ttft_s"),
+        "order 2 prose": ("data/2026-10-03-order-corpus-2.jsonl", ("plain",), "engine_ttft_s"),
         # ---- the dense grid: is TabbyAPI's window a straight line? ------------
-        "curvature grid": ("data/2026-10-03-curva-tabbyapi.jsonl", ("plain",), "engine_ttft_s"),
+        "curvature grid": ("data/2026-10-03-curve-tabbyapi.jsonl", ("plain",), "engine_ttft_s"),
     }
 
     print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
@@ -365,10 +365,10 @@ def check_measurements(esito):
             out.setdefault(int(r["words"]), []).append(r["uncached"])
         return {w: statistics.median(v) for w, v in out.items()}
 
-    voc = [by_words("data/2026-10-03-ordine-vocab-1.jsonl"),
-           by_words("data/2026-10-03-ordine-vocab-2.jsonl")]
-    pro = [by_words("data/2026-10-03-ordine-corpus-1.jsonl"),
-           by_words("data/2026-10-03-ordine-corpus-2.jsonl")]
+    voc = [by_words("data/2026-10-03-order-vocab-1.jsonl"),
+           by_words("data/2026-10-03-order-vocab-2.jsonl")]
+    pro = [by_words("data/2026-10-03-order-corpus-1.jsonl"),
+           by_words("data/2026-10-03-order-corpus-2.jsonl")]
     if all(pro) and any(voc):
         print("    prose control, tokens for the same word count:")
         for words in sorted(pro[0]):
