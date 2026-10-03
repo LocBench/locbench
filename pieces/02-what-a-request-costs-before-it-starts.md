@@ -223,10 +223,10 @@ between Ollama and LM Studio is 42 seconds of overhead against 166.
 
 ### The ranking is not the engines' to keep
 
-Everything above is Qwen3.8-27B, and the sentence that admitted it said nothing
-about whether a smaller model behaves the same way. So the same streamed cell was
-run on Qwen3-8B — same quantization, same client, same lengths, and the same
-file loaded by three programs.
+Everything above is Qwen3.8-27B, and until this run nothing here said whether a
+smaller model behaves the same way. So the same streamed cell was run on
+Qwen3-8B — same quantization, same client, same lengths, and the same file
+loaded by three programs.
 
 It was meant to be a confirmation. It is not.
 
@@ -244,8 +244,9 @@ It was meant to be a confirmation. It is not.
 the 8B: a factor of four, where the model is a factor of three and a half
 smaller. LM Studio moves by 3.6, Ollama by 2.3. A per-request cost that follows
 the size of the model is not the front door — it is in the first forward pass, or
-in the buffers that pass has to be handed, and those grow with the model. This is
-what is left after section 5, and it has a shape now.
+in the buffers that pass has to be handed, and those grow with the model. That
+is the shape of what section 5 leaves unexplained, and section 5 did not have it
+until this run.
 
 **And the order changes.** On the 27B, Ollama is 56 ms faster per request than
 llama.cpp at 4.6σ. On the 8B the two are **6 ms apart at 0.4σ**, which is
