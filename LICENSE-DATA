@@ -1,0 +1,30 @@
+# Data licence
+
+The **code** in this repository is under the MIT licence — see [`LICENSE`](LICENSE).
+
+The **measurements** are not code, and they are under a different licence, because
+the point of this project is that other people reuse them:
+
+> The contents of `data/` are licensed under the
+> **Creative Commons Attribution 4.0 International** licence (CC BY 4.0).
+> <https://creativecommons.org/licenses/by/4.0/>
+
+## What that means in practice
+
+**You may** copy, redistribute, remix, transform and build upon the data, for any
+purpose, including commercially.
+
+**You must** give appropriate credit: name LocBench, and link back to this
+repository if you can. A sentence like *"data from LocBench
+(github.com/…/locbench)"* is enough.
+
+**No warranty.** The data is published as it came out of the machine, limits
+included. Read [`PROTOCOL.md`](PROTOCOL.md), section 6, before drawing
+conclusions from it. In particular: it is one machine, one GPU, one model
+family, and two sessions.
+
+## Why CC BY and not something stricter
+
+Because a measurement nobody may reuse is a measurement nobody can check, and
+being checkable is the entire claim. If a number here is wrong, the fastest way
+to find out is for someone else to redo it.
