@@ -94,12 +94,11 @@ def test_a_cell_matches_its_lengths_and_not_its_neighbours():
     assert fit["a"] == pytest.approx(0.1, abs=1e-9), "the other cell leaked in"
 
 
-def a_run(tmp_path, name, engine, gap, streams=0.3):
+def a_run(tmp_path, name, engine, gap, tail=1.0):
     """A file of readable rows for one engine, with a chosen clock gap.
 
-    `streams` is the fraction of the whole reply that had arrived by the time the
-    first chunk did. At 0.3 the engine is streaming normally; at 1.0 it sent
-    everything in one go.
+    `tail` is how many seconds of reply kept arriving after the first chunk. At
+    1.0 the engine is streaming; at 0.0 the first chunk was also the last.
     """
     path = tmp_path / name
     lines = []
@@ -111,7 +110,7 @@ def a_run(tmp_path, name, engine, gap, streams=0.3):
             "uncached": n, "prompt_tokens": n,
             "engine_ttft_s": 0.10 + n * 0.001,
             "client_ttft_s": ttft,
-            "client_total_s": ttft / streams,
+            "client_total_s": ttft + tail,
         }))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return str(path)
@@ -158,24 +157,43 @@ def test_an_engine_that_buffers_its_reply_is_caught(tmp_path, monkeypatch):
     An engine that sends the whole answer in one chunk makes the client's "first
     token" the entire response. That number would sit in the ranking column
     looking exactly like a prefill window -- and it would be the one engine in
-    the table that is measured end to end, standing next to three that are not.
-    What saves it is that a buffered reply needs no new instrument to detect:
-    first chunk and last chunk arrive together.
+    the table measured end to end, standing next to three that are not. What
+    catches it is the tail: a buffered reply has nothing left to arrive.
     """
-    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06, streams=0.3),
-             a_run(tmp_path, "b.jsonl", "beta", 0.06, streams=1.0)]
+    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06, tail=1.0),
+             a_run(tmp_path, "b.jsonl", "beta", 0.06, tail=0.0)]
     text = run_verdict(monkeypatch, paths)
     assert "do not stream" in text
     assert "beta" in text
     assert "must not be ranked on it" in text
 
 
-def test_an_engine_that_streams_is_not_accused_of_buffering(tmp_path, monkeypatch):
-    """Both engines stream here, which is the ordinary case, and the guard has
-    to stay quiet -- a warning that fires on healthy data is a warning nobody
-    reads by the time it matters."""
-    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06, streams=0.3),
-             a_run(tmp_path, "b.jsonl", "beta", 0.06, streams=0.4)]
+def test_a_long_prefill_is_not_mistaken_for_buffering(tmp_path, monkeypatch):
+    """The first metric here was the fraction of the reply that had arrived at
+    the first chunk, and it measured the prompt instead of the engine.
+
+    On a 4,000-token prompt the prefill is most of the wall time, so a perfectly
+    streaming engine shows a high fraction -- LM Studio reached 0.81 on a 681
+    tok/s prefill that matches its own reported rate exactly. Calling that
+    buffered would discard a good measurement. The tail tells them apart, which
+    is why the tail is what the guard reads.
+    """
+    paths = [a_run(tmp_path, "a.jsonl", "alpha", 0.06, tail=1.4),
+             a_run(tmp_path, "b.jsonl", "beta", 0.06, tail=2.1)]
+    # Give these rows the shape that broke the old metric: a first chunk very
+    # late in a long reply.
+    for name in ("a.jsonl", "b.jsonl"):
+        path = tmp_path / name
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            row["client_ttft_s"] = 6.0
+            row["client_total_s"] = 7.4
+            rows.append(json.dumps(row))
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
     text = run_verdict(monkeypatch, paths)
     assert "do not stream" not in text
 

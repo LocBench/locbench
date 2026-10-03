@@ -131,28 +131,33 @@ def _cell(f):
     return "%6.3f +/- %.3f s" % (f["a"], f["se"])
 
 
-def _streams(rows, cell):
-    """How much of the reply had arrived by the time the client saw its first
-    byte, as a fraction of the whole reply.
+def _tail(rows, cell):
+    """How long text kept arriving after the first chunk, in seconds.
 
-    The client's clock is only a time-to-first-token if the engine actually
-    streams. An engine that buffers its answer sends one chunk at the end, and
-    then the client's "first token" is the entire response -- a number that
-    would sit in the ranking column looking exactly like a prefill window. This
-    is the guard against that, and it is why the column is printed rather than
-    assumed.
+    The guard on the client's clock: that clock is a time to first token only if
+    the engine streams. The first metric tried here was the fraction of the
+    reply that had arrived at the first chunk, and it was wrong in a way worth
+    recording. On a 4,000-token prompt the prefill is most of the wall time, so
+    even a perfectly streaming engine shows a high fraction -- LM Studio sits at
+    0.81 there with a prefill rate identical to the one measured on its own
+    clock, which is to say it is behaving correctly and the metric was measuring
+    the prompt.
+
+    What separates streaming from buffering is not the fraction but the tail.
+    An engine that sends its whole answer in one chunk has nothing left to
+    arrive, so `total - ttft` collapses to zero; an engine that streams has one.
     """
-    ratios = []
+    tails = []
     for row in rows:
         if row.get("discarded") or not _same_cell(row.get("cell"), cell):
             continue
         t, total = row.get("client_ttft_s"), row.get("client_total_s")
         if t is None or not total:
             continue
-        ratios.append(t / total)
-    if not ratios:
+        tails.append(total - t)
+    if not tails:
         return None
-    return statistics.median(ratios)
+    return statistics.median(tails)
 
 
 def _gap(engine_fit, client_fit):
@@ -180,8 +185,8 @@ def main():
     print("  comparing the '%s' cell" % args.cell)
     print()
     print("  %-26s %-18s %19s %19s %9s %8s" % (
-        "engine / model", "version", "engine's clock", "client's clock", "gap", "streams"))
-    print("  " + "-" * 105)
+        "engine / model", "version", "engine's clock", "client's clock", "gap", "arrives after"))
+    print("  " + "-" * 112)
 
     fitted = {}
     for engine, model in sorted(runs, key=lambda k: (k[0] or "", k[1] or "")):
@@ -193,12 +198,12 @@ def main():
             print("  %-26s %-18s   (not enough lengths to fit)" % (
                 label[:26], (run["version"] or "unknown")[:18]))
             continue
-        ratio = _streams(run["rows"], args.cell)
-        fitted[label] = {"engine": fe, "client": fc, "streams": ratio}
+        tail = _tail(run["rows"], args.cell)
+        fitted[label] = {"engine": fe, "client": fc, "tail": tail}
         print("  %-26s %-18s %19s %19s %9s %8s" % (
             label[:26], (run["version"] or "unknown")[:18],
             _cell(fe), _cell(fc), _gap(fe, fc),
-            "%.0f%%" % (100 * ratio) if ratio is not None else "-"))
+            "%.2f s" % tail if tail is not None else "-"))
 
     if len(fitted) < 2:
         return 0
@@ -222,11 +227,11 @@ def main():
             print("    -> within %.0f ms of each other. The engine clocks time the" % (spread * 1000))
             print("       same interval here, and either column will do.")
 
-    buffered = {e: f["streams"] for e, f in fitted.items()
-                if f.get("streams") is not None and f["streams"] > 0.5}
+    buffered = {e: f["tail"] for e, f in fitted.items()
+                if f.get("tail") is not None and f["tail"] < 0.100}
     if buffered:
         print("    -> these engines do not stream: %s" % ", ".join(
-            "%s (%.0f%% of the reply had arrived)" % (e.split(" / ")[0], 100 * r)
+            "%s (%.0f ms arrived after the first chunk)" % (e.split(" / ")[0], 1000 * r)
             for e, r in sorted(buffered.items())))
         print("       For those rows the client's clock is the whole reply, not a")
         print("       time to first token, and they must not be ranked on it.")
