@@ -338,20 +338,36 @@ def check_measurements(esito):
     # the engine reports, so it survives this; a reader who divides time by
     # words does not, because the same word count is a different amount of work
     # depending on which words.
-    voc = rows_of("data/2026-10-03-prosa-vocab.jsonl")
-    pro = rows_of("data/2026-10-03-prosa-corpus.jsonl")
-    if voc and pro:
+    #
+    # Computed from the counterbalanced runs, which is what the piece quotes,
+    # and both prose passages are printed because the gap between them is the
+    # point: two prompts of the same length, 40% apart in tokens.
+    def by_words(path):
+        rows = rows_of(path)
+        if not rows:
+            return {}
+        out = {}
+        for r in rows:
+            if r.get("discarded") or not r.get("uncached") or not r.get("words"):
+                continue
+            out.setdefault(int(r["words"]), []).append(r["uncached"])
+        return {w: statistics.median(v) for w, v in out.items()}
+
+    voc = [by_words("data/2026-10-03-ordine-vocab-1.jsonl"),
+           by_words("data/2026-10-03-ordine-vocab-2.jsonl")]
+    pro = [by_words("data/2026-10-03-ordine-corpus-1.jsonl"),
+           by_words("data/2026-10-03-ordine-corpus-2.jsonl")]
+    if all(pro) and any(voc):
         print("    prose control, tokens for the same word count:")
-        for words in sorted({int(r["words"]) for r in pro
-                             if not r.get("discarded") and r.get("words")}):
-            tv = [r["uncached"] for r in voc
-                  if not r.get("discarded") and int(r.get("words") or 0) == words and r.get("uncached")]
-            tp = [r["uncached"] for r in pro
-                  if not r.get("discarded") and int(r.get("words") or 0) == words and r.get("uncached")]
-            if tv and tp:
-                print("      %5d words -> vocabulary %5d tokens, prose %5d tokens  (%.2fx)"
-                      % (words, statistics.median(tv), statistics.median(tp),
-                         statistics.median(tp) / statistics.median(tv)))
+        for words in sorted(pro[0]):
+            tv = statistics.median([v[words] for v in voc if words in v])
+            tp = [p[words] for p in pro if words in p]
+            if not tv or len(tp) < 2:
+                continue
+            print("      %5d words -> vocabulary %5d tokens, prose %5d and %5d  "
+                  "(%.2fx, the two passages %.0f%% apart)"
+                  % (words, tv, tp[0], tp[1], statistics.median(tp) / tv,
+                     100 * abs(tp[0] - tp[1]) / min(tp)))
         esito.checks += 1
 
 

@@ -11,82 +11,90 @@ Ready to paste. Lengths are checked by `bin/verify_post.py`.
 <!-- limit: 300 -- a Reddit post title -->
 
 ```
-Three engines, the same weight file, per-request cost 0.062 s vs 0.106 s vs 0.225 s
+Four engines, one weight file: per-request cost 0.105 s vs 0.416 s, once you time them all with one clock
 ```
 
 **Body:**
 
 ```
 My first post here looked at what `prompt_tokens_per_sec` actually measures --
-uncached tokens over time-to-first-token, in both llama.cpp and TabbyAPI -- and
-found a fixed cost per request that the metric spreads over the few new tokens,
-so a short prompt reports a third of the real speed.
+uncached tokens over time-to-first-token -- and found a fixed cost per request
+that the metric spreads over the few new tokens.
 
-What I could not say was where that cost comes from. In real usage, streaming,
-the `stream_options` flag and the client were all the same set of requests. So I
-built a client and measured it properly.
+This is the controlled version, on four engines. It is also a correction to my
+own method, so that comes first.
 
-**It is not the streaming and it is not the flag.** Four cells -- streaming or
-not, crossed with the telemetry flag -- each walked at seven prompt lengths from
-20 words to 4,000, three times each, fitted separately. Every intercept carries
-its standard error.
+**The engine's own clock is not one clock.** Every engine publishes something it
+calls the prompt time, and they are not the same interval. Over the same
+streamed requests -- same client, same lengths, same minute:
 
-TabbyAPI: 0.148 / 0.151 / 0.144 / 0.148 s. Spread of 7 ms.
-llama.cpp: 0.099 / 0.101 / 0.104 / 0.104 s. Spread of 5 ms, error 6.
+    llama.cpp   own clock 0.098 s   client's clock 0.161 s   63 ms untimed
+    TabbyAPI    own clock 0.149 s   client's clock 0.273 s  124 ms untimed
 
-**The cache cannot be imposed.** I asked for 25%, 50% and 75% of the prompt to
-be already cached and got 0% back every time; the threshold is around 1,500
-tokens of shared prefix, and at 90% it failed once in five. But the two ends
-answer the question: the same 2,024-token prompt takes 1.98 s fully uncached and
-0.35 s with 1,792 tokens cached, and the line from the sweep predicts both to
-within 35 ms. The cached tokens are free.
+llama.cpp stops its clock when the prompt has been evaluated; TabbyAPI when the
+first token has been sampled; neither covers getting the bytes out. Ranking
+engines by subtracting one from the other charges the difference between two
+stopwatches to the engine. My earlier table did exactly that.
 
-**Then I put four engines side by side, and three of them are running the same
-file.** Not the same family -- `sha256 3445102e...`, 16,811 MB, verified by hash:
+And on the OpenAI-compatible endpoint -- the one every client actually speaks --
+Ollama and LM Studio publish token counts and **no timings at all**. So "the
+engine's own clock" was, on that surface, a comparison of two engines out of
+four.
+
+**On one clock, all four, streamed. Same cell, same lengths:**
 
 | engine | fixed cost | throughput |
 |---|---|---|
-| Ollama 0.34.4 | **0.062 ± 0.005 s** | 1154 tok/s |
-| llama.cpp b427 | **0.106 ± 0.004 s** | 1140 tok/s |
-| LM Studio 69d945a | **0.225 ± 0.041 s** | 717 tok/s |
+| Ollama 0.34.4 | 0.105 ± 0.007 s | 1158 tok/s |
+| llama.cpp b427 | 0.161 ± 0.010 s | 1145 tok/s |
+| TabbyAPI / exllamav3 | 0.273 ± 0.044 s | 1106 tok/s |
+| LM Studio 69d945a | 0.416 ± 0.061 s | 729 tok/s |
 
-Same weights, same card. Per-request cost differs 3.6x, throughput differs 1.6x.
-TabbyAPI, on a different format, sits at 0.152 s -- but its curve is not linear
-over these lengths and its interval overlaps the others, so I am not ranking it.
+Ollama, llama.cpp and LM Studio are the **same file** -- `sha256 3445102e...`,
+16,811 MB, verified by hash. Per-request cost differs 4.0x.
 
-**And six explanations are dead.** A fixed per-request cost invites "it's
-obviously X", so I measured each: not streaming, not the telemetry flag, not
-re-reading the cached prefix, not the client's clock, not setting up to generate
-(allowing 256x more output moved it by 20 ms), and not the configuration --
-llama.cpp re-run under LM Studio's KV precision, flash attention and slot count
-came out within 2.5%.
+The two clocks agree on the slope and disagree on the intercept, which is
+exactly what a constant per-request offset does to a line. llama.cpp: 1145 tok/s
+on the client's clock, 1152 on its own. If the gap were an artefact of measuring
+different things, it would move the slope too. It does not.
 
-What is left is whatever the engine does at its own front door between receiving
-a request and starting the forward pass. I am not going to pretend I measured
-that.
+**If you run LM Studio on an NVIDIA card, this is the part worth your time.** It
+is 36% slower than llama.cpp on the identical file, and it is not LM Studio:
 
-**The one that is worth your time if you use LM Studio on NVIDIA.** LM Studio is
-40% slower than llama.cpp on the identical file, and it is not LM Studio:
+    $ lms runtime ls
+    llama.cpp-linux-x86_64-nvidia-cuda-avx2@2.41.0
+    llama.cpp-linux-x86_64-vulkan-avx2@2.51.0      <- selected
 
-```
-$ lms runtime ls
-llama.cpp-linux-x86_64-nvidia-cuda-avx2@2.41.0
-llama.cpp-linux-x86_64-vulkan-avx2@2.51.0         ✓   <- selected
-```
+It runs the **Vulkan** build. Selecting CUDA makes it abort inside
+`llama_context`, or load without offloading at all -- 756 MiB of VRAM, the model
+in system memory, a minute per short request. And at a 64k context it now fails
+to allocate the 256 MiB its speculative decoding context wants, with 23 GB
+nominally free. On this machine Vulkan is the only backend that works, and it
+costs about a third of the prefill throughput.
 
-It runs the **Vulkan** build. Its log says `ggml_vulkan` throughout and `cuda`
-never. And switching is not a matter of a menu: selecting the CUDA runtime makes
-LM Studio abort inside `llama_context`, and on a smaller context it loads
-without offloading at all -- 756 MiB of VRAM, the model in system memory, a
-minute per short request. On this machine Vulkan is the only backend that works,
-and it costs 40% of the prefill throughput.
+**One more, if you ever report prompt length in words.** I ran the same sweep on
+real prose from my own repository, alternating with the synthetic vocabulary to
+control for the card warming up. The fixed cost moves 0.097 -> 0.111 s, the
+throughput does not move, and the vocabulary-to-prose step reverses when it
+goes back. But the interesting part is the token count:
 
-**Two corrections to my own earlier posts**, since both were mine to make. An
-earlier version said the three engines ran the same weight file; the llama.cpp
-*service* was loading a different GGUF, `sha256 bfbd68b3...`, 32 bytes apart out
-of 16.8 GB. And an earlier fit over four lengths instead of seven gave
-llama.cpp 0.090 s instead of 0.106 -- the intercept is an extrapolation and the
-shortest prompt decides how far it has to extrapolate.
+    20 words    84 tokens (vocabulary)   107 and 117 (prose)
+    60 words   124                       167 and 234
+    300 words  364                       581 and 593
+
+A word is not a unit of work. The same word count is 1.3x to 1.6x as many
+tokens, and **up to 40% more between two passages of prose of the same length**.
+
+**Two corrections to my own earlier posts, both mine to make.** An earlier
+version said three engines ran the same weight file; the llama.cpp *service* was
+loading a different GGUF, 32 bytes apart out of 16.8 GB. And an earlier fit over
+four lengths instead of seven gave llama.cpp 0.090 s instead of 0.106 -- the
+intercept is an extrapolation and the shortest prompt decides how far.
+
+Six other explanations are dead, each measured rather than argued: not the
+streaming, not the telemetry flag, not re-reading the cached prefix, not
+preparing to generate, not KV precision or flash attention or slot count, not
+the context size.
 
 Data, client, analysis scripts and environment card are in the repo:
 [REPO LINK]
@@ -101,9 +109,9 @@ Data, client, analysis scripts and environment card are in the repo:
 ```
 If LM Studio feels slow on an NVIDIA card, check which llama.cpp build it picked:
 
-  llama.cpp-...-vulkan-avx2    <- selected
+  llama.cpp-...-vulkan-avx2   <- selected
 
-Its CUDA builds abort or load without offloading. On Vulkan it gets 717 tok/s where llama.cpp on the same file gets 1140.
+Its CUDA builds abort or load without offloading. On Vulkan it gets 729 tok/s where llama.cpp on the same file gets 1145.
 ```
 
 **Below it, as a reply:**
@@ -111,13 +119,14 @@ Its CUDA builds abort or load without offloading. On Vulkan it gets 717 tok/s wh
 <!-- limit: 280 -- an X reply -->
 
 ```
-Same weight file (sha256 verified), three engines, per-request fixed cost:
+Same weight file, four engines, per-request cost timed with one clock:
 
-Ollama      0.062 s
-llama.cpp   0.106 s
-LM Studio   0.225 s
+Ollama      0.105 s
+llama.cpp   0.161 s
+TabbyAPI    0.273 s
+LM Studio   0.416 s
 
-Not streaming, not the telemetry flag, not the cache, not generation setup. It is what the engine does before the first forward pass.
+Their own reported windows say 0.098 and 0.149. They leave 63 ms and 124 ms of each request untimed.
 ```
 
 ---

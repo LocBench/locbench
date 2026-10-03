@@ -59,7 +59,11 @@ The whole story is in [`PROTOCOL.md`](PROTOCOL.md), together with the three
 questions that turn that hypothesis into a measurement, or demolish it.
 
 Published so far: [`pieces/`](pieces/) — starting with
-[what `prompt_tokens_per_sec` actually measures](pieces/01-what-prompt-tokens-per-second-measures.md).
+[what `prompt_tokens_per_sec` actually measures](pieces/01-what-prompt-tokens-per-second-measures.md),
+and then
+[what an engine charges you before it does any work](pieces/02-what-a-request-costs-before-it-starts.md),
+where the metric above is measured under control on four engines and the answer
+turns out to depend on which clock you ask.
 
 ## Layout
 
