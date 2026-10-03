@@ -227,10 +227,13 @@ The raw data for everything above is in the repository, and the comparisons are
 one command each.
 
 ```bash
-# one file per engine and model: a wildcard would pool the control runs
+# one file per engine and model. A wildcard would pool the control runs, and
+# listing a subset gives a slightly different line -- which is the point of
+# naming the files rather than globbing them.
 python3 bench/compare_engines.py \
     data/2026-10-03-sweep-ollama.jsonl data/2026-10-03-sweep-llamacpp.jsonl \
-    data/2026-10-03-sweep-lmstudio.jsonl data/2026-10-03-sweep-tabbyapi.jsonl
+    data/2026-10-03-d1-llamacpp.jsonl data/2026-10-03-sweep-lmstudio.jsonl \
+    data/2026-10-03-sweep-tabbyapi.jsonl data/2026-10-03-d1-tabbyapi.jsonl
 python3 bench/analyze_d1.py data/2026-10-03-d1-tabbyapi.jsonl
 python3 bench/measure.py sweep --engine ollama --model qwen3.8-27b-64k \
     --lengths 300,1200,2000,4000 --repetitions 5 --out data/ollama.jsonl
