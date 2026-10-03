@@ -227,6 +227,34 @@ def test_the_sweep_can_hold_the_generation_length_fixed(engine, tmp_path):
     assert {p.get("max_tokens") for p in FakeEngine.received} == {7}
 
 
+def test_the_streaming_sweep_is_the_one_that_has_the_clients_clock(engine, tmp_path):
+    """The four engine clocks do not cover the same interval, and that is not a
+    detail -- it is the whole difference between a comparison and a mixture.
+
+    Measured on the same streaming requests, llama.cpp's reported window leaves
+    58 ms of each request uncounted and TabbyAPI's leaves 128 ms. Put those two
+    numbers in one table and the column stops being "what the engine charges
+    before it works" and becomes "what four different clocks happened to
+    include". The client's clock is the only instrument that times the same
+    interval for all four engines, and it exists only when the request streams.
+
+    So the streaming sweep has to actually stream, and it has to keep the
+    client's window on every row -- not fall back to the engine's, which is what
+    the engine comparison would silently do if the flag went nowhere.
+    """
+    session, out = a_session(engine, tmp_path)
+    measure.experiment_sweep(session, [40, 80], stream=True)
+
+    assert {p.get("stream") for p in FakeEngine.received} == {True}, \
+        "the sweep did not stream"
+    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    assert rows, "nothing was written"
+    assert all(r["cell"].startswith("stream@") for r in rows), \
+        "a streaming sweep was filed under the plain cell"
+    assert all(r["client_ttft_s"] is not None for r in rows), \
+        "the client's window is missing, which is the only reason to stream"
+
+
 def test_two_sessions_do_not_send_the_same_prompts(engine, tmp_path):
     """Consecutive runs on the same engine must not reuse each other's prefixes.
 
@@ -411,3 +439,57 @@ def test_discarded_rows_are_reported_with_their_reason(engine, tmp_path):
     finally:
         measure.print = real_print
     assert any("http 503" in line for line in printed)
+
+
+# ------------------------------------------------------- real prose, not words
+
+def test_prose_prompts_come_from_the_corpus_and_are_still_fresh(engine, tmp_path):
+    """The fixed vocabulary is the weakest thing about these measurements.
+
+    The obvious objection is that real text tokenises differently and might
+    carry a different fixed cost, so the client can build its prompts from real
+    prose instead. Two things have to survive the swap, and both are silent when
+    they break:
+
+      * the words really have to come from the corpus. A control that quietly
+        still drew from VOCAB would compare the vocabulary with itself and
+        report the absence of a difference as a finding.
+      * the sweep still has to send a fresh prefix every time. Prose drawn from
+        random offsets makes overlap between prompts far more likely than a
+        1,000-word vocabulary does, and a reused prefix is served from cache --
+        the four lengths would land somewhere else entirely.
+    """
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text(" ".join("corpusword%d" % i for i in range(4000)),
+                      encoding="utf-8")
+    before = list(measure.CORPUS_TEXT)
+    try:
+        assert measure.load_corpus([corpus]) == 4000
+        text = measure.words_text(1, 20)
+        assert all(w.startswith("corpusword") for w in text.split())
+        assert not (set(text.split()) & set(measure.VOCAB))
+
+        session, _ = a_session(engine, tmp_path, repetitions=2)
+        measure.experiment_sweep(session, [40, 80])
+        prompts = [p["messages"][0]["content"] for p in FakeEngine.received]
+        prefixes = [p.split("Section B.")[0] for p in prompts]
+        assert len(prefixes) == len(set(prefixes)), "a shared prefix was reused"
+    finally:
+        measure.CORPUS_TEXT[:] = before
+
+
+def test_a_corpus_that_cannot_be_read_is_skipped_not_invented(tmp_path):
+    """A missing file contributes nothing. Falling back to the vocabulary for it
+    would mix synthetic words into a prose run, and the mixture would be
+    invisible in the output -- the prompts would simply be wrong in a way that
+    still tokenises."""
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text("real words here and more of them", encoding="utf-8")
+    before = list(measure.CORPUS_TEXT)
+    try:
+        n = measure.load_corpus([tmp_path / "does-not-exist.txt", corpus])
+        assert n == 7, "the missing file contributed something"
+        assert measure.CORPUS_TEXT == ["real", "words", "here", "and",
+                                       "more", "of", "them"]
+    finally:
+        measure.CORPUS_TEXT[:] = before

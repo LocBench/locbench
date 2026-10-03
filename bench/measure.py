@@ -288,9 +288,50 @@ def vram_probe(stop_event, samples):
 
 # ------------------------------------------------------------------ prompts
 
+# When set, prompts are drawn from this instead of the fixed vocabulary.
+# The synthetic prompts are the weakest thing about these measurements and the
+# obvious objection is that real text tokenises differently. This is the control
+# for it: the same procedure, real prose.
+CORPUS_TEXT = []
+
+
+def load_corpus(paths):
+    """Real prose, from files already in the repository.
+
+    Returns the number of words loaded. Anything unreadable is skipped rather
+    than guessed at.
+    """
+    words = []
+    for path in paths:
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith(("#", "```", "|", ">", "    ")):
+                continue
+            words.extend(line.split())
+    CORPUS_TEXT[:] = words
+    return len(words)
+
+
 def words_text(seed, count):
-    """`count` words from the vocabulary, deterministic for a given seed."""
+    """`count` words from the vocabulary, deterministic for a given seed.
+
+    From the real corpus when one has been loaded, from the fixed vocabulary
+    otherwise. The seed decides where in the corpus the passage starts, so the
+    same seed still gives the same text -- the shared half of a D2 prompt has to
+    be identical between requests or the cache has nothing to find.
+    """
     rng = random.Random(seed)
+    if CORPUS_TEXT:
+        if count >= len(CORPUS_TEXT):
+            # Wrap rather than repeat from one offset, so the passage stays real
+            # prose instead of becoming the same run twice.
+            return " ".join((CORPUS_TEXT * (count // len(CORPUS_TEXT) + 1))[:count])
+        start = rng.randrange(0, len(CORPUS_TEXT) - count)
+        return " ".join(CORPUS_TEXT[start:start + count])
     return " ".join(rng.choice(VOCAB) for _ in range(count))
 
 
@@ -691,7 +732,7 @@ def lmstudio_native(url, model, prompt, max_tokens=16, timeout=600):
     }
 
 
-def experiment_sweep(session, lengths, max_tokens=64):
+def experiment_sweep(session, lengths, max_tokens=64, stream=False):
     """The plain request at several lengths, on whichever API gives the engine's
     own window.
 
@@ -708,7 +749,15 @@ def experiment_sweep(session, lengths, max_tokens=64):
     # Engines whose OpenAI-compatible endpoint publishes no timing at all have
     # to be asked on the API that does. Two of the four are like that, and each
     # one keeps its window somewhere different.
-    native = {"ollama": ollama_native, "lmstudio": lmstudio_native}.get(session.engine)
+    # `stream=True` forces the OpenAI path on every engine, including the two
+    # whose window only exists on their native API. That is not a regression:
+    # a streaming sweep is not after the engine's window. It is after the
+    # client's, because the client's clock is the only instrument that measures
+    # the same interval for all four engines. The engine clocks do not -- over
+    # the same requests, llama.cpp's leaves 58 ms uncounted and TabbyAPI's 128,
+    # so a table built by mixing them compares four different quantities.
+    native = None if stream else \
+        {"ollama": ollama_native, "lmstudio": lmstudio_native}.get(session.engine)
     # The salt is the session, and it is not decoration. Seeding the shared half
     # with the length alone made every repetition of a length send the same
     # prefix, and llama.cpp's cache reused it. Seeding it with the length and
@@ -736,10 +785,11 @@ def experiment_sweep(session, lengths, max_tokens=64):
                            "model": session.model, "discarded": False, "reason": None}
                     row.update(clock)
             else:
-                row = session.request(prompt, stream=False, inject_usage=False,
-                                      max_tokens=max_tokens)
+                row = session.request(prompt, stream=stream,
+                                      inject_usage=stream, max_tokens=max_tokens)
             row["words"] = words
-            row = session.keep(row, "sweep", "plain@%d" % words, repetition)
+            row = session.keep(row, "sweep", "%s@%d" % ("stream" if stream else "plain", words),
+                               repetition)
             if session.verbose:
                 print("    %6d words -> %s" % (words, _summary(row)), flush=True)
             session.sleep()
@@ -840,13 +890,37 @@ def main():
     ap.add_argument("--out", help="JSONL to append to")
     ap.add_argument("--fractions", default="0,0.25,0.5,0.75,0.9,0.99",
                     help="for d2: the cached fractions to ask for")
+    ap.add_argument("--corpus", action="store_true",
+                    help="build prompts from real prose in the repository "
+                         "instead of the fixed vocabulary. The control for "
+                         "'your prompts are synthetic'")
     ap.add_argument("--lengths", default="20,60,150,300,1200,2000,4000",
                     help="for sweep: the prompt lengths to walk, in words")
+    ap.add_argument("--stream", action="store_true",
+                    help="for sweep: send the requests in streaming, which is the "
+                         "only way the client's own clock is available -- and the "
+                         "client's clock is the only one all engines share")
     ap.add_argument("--max-tokens", type=int, default=64,
                     help="how much the model may write back. Held fixed, this is a "
                          "control; varied, it asks whether the fixed cost has "
                          "anything to do with setting generation up")
     args = ap.parse_args()
+
+    if args.corpus:
+        sources = [ROOT / "README.md", ROOT / "PROTOCOL.md"]
+        sources += sorted((ROOT / "pieces").glob("*.md"))
+        n = load_corpus(sources)
+        longest = max(max(int(x) for x in args.lengths.split(",")), 1)
+        print("  corpus: %d words of real prose from %d repository files"
+              % (n, len(sources)))
+        # The passages are drawn from random offsets, so a corpus only a little
+        # larger than the longest prompt makes every prompt overlap every other
+        # one. The read-back of `cached_tokens` would catch the damage, but the
+        # run would be answering a different question than the one asked.
+        if n < longest * 2:
+            print("  corpus too small: %d words cannot hold a %d-word prompt "
+                  "twice over" % (n, longest), file=sys.stderr)
+            return 2
 
     url = args.url or ENGINES[args.engine]["url"]
     model = args.model or _guess_model(url)
@@ -884,7 +958,7 @@ def main():
 
     if args.experiment == "sweep":
         lengths = [int(x) for x in args.lengths.split(",") if x.strip()]
-        experiment_sweep(session, lengths, args.max_tokens)
+        experiment_sweep(session, lengths, args.max_tokens, stream=args.stream)
     elif args.experiment == "d1":
         experiment_d1(session, [int(x) for x in args.lengths.split(",") if x.strip()])
     elif args.experiment == "d3":

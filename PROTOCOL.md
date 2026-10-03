@@ -251,6 +251,21 @@ the window itself and treats the engine's number as a cross-check where one
 exists, rather than as the source. A comparison across engines has to say which
 of the two it is quoting, because for one of them there is no choice.
 
+**And the two are not the same interval — by different amounts in different
+engines.** Measured on identical streaming requests, llama.cpp's reported window
+leaves **63 ms** of each request untimed and TabbyAPI's leaves **128 ms**: the
+first stops when the prompt has been evaluated, the second when the first token
+has been sampled, and neither covers getting the bytes out. So "the engine's own
+clock" is not one instrument read four times. It is four instruments. Subtracting
+one engine's intercept from another's charges the difference between two
+stopwatches to the engine.
+
+That is why the rule below is a rule and not a preference. **A ranking of engines
+is built on the client's clock**, over streamed requests, where the same code
+times the same interval for every engine. The engine's own number is kept and
+published as what it is: a cross-check that says how much of each request happens
+inside the part of the engine that chose to report.
+
 Note that the first two rows are the correction this protocol owes to itself: the
 field the engines call "prompt tokens per second" is the *reported prompt rate*,
 and the denominator is a latency. The two are different quantities, and only one

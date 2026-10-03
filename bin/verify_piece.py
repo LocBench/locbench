@@ -242,7 +242,12 @@ def check_measurements(esito):
     so that a number written into a piece can be compared with a number derived
     from the data rather than with a number remembered from earlier.
 
-    It prints rather than asserts, which is the same split as the section above:
+    Every source names the clock it is fitted on, and that is not a detail. Over
+    the same streamed requests llama.cpp's reported window leaves 63 ms of each
+    request untimed and TabbyAPI's 128, so an engine-clock fit and a client-clock
+    fit of identical requests are different quantities wearing the same name.
+
+    It prints rather than asserts, which is the same split as the sections above:
     the comparing is done by whoever reads, and what the tool guarantees is that
     there is something to compare against.
     """
@@ -250,12 +255,12 @@ def check_measurements(esito):
     sys.path.insert(0, str(ROOT / "bench"))
     import analyze_log as A
 
-    def fit(rows, cell):
+    def fit(rows, cell, clock="engine_ttft_s"):
         points = {}
         for row in rows:
             if row.get("discarded") or not _same_cell(row.get("cell"), cell):
                 continue
-            n, w = row.get("uncached"), row.get("engine_ttft_s")
+            n, w = row.get("uncached"), row.get(clock)
             if not n or w is None:
                 continue
             points.setdefault(n, []).append(w)
@@ -270,34 +275,84 @@ def check_measurements(esito):
         (a, b), r2, n = result
         return a, (1 / b if b > 0 else float("inf")), r2, n
 
-    sources = {
-        "tabbyapi d1": ("data/2026-10-03-d1-tabbyapi.jsonl",
-                        ("plain", "inject", "stream+inject", "stream")),
-        "llamacpp d1": ("data/2026-10-03-d1-llamacpp.jsonl",
-                        ("plain", "inject", "stream+inject", "stream")),
-        "ollama": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",)),
-        "llamacpp (same file)": ("data/2026-10-03-cfg-8093.jsonl", ("plain",)),
-        "lmstudio": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",)),
-        "tabbyapi": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",)),
-        "control: KV q4_0": ("data/2026-10-03-cfg-8094.jsonl", ("plain",)),
-        "control: 4 slots": ("data/2026-10-03-cfg-8096.jsonl", ("plain",)),
-        "control: max-tokens 1": ("data/2026-10-03-maxtok-1.jsonl", ("plain",)),
-        "control: max-tokens 256": ("data/2026-10-03-maxtok-256.jsonl", ("plain",)),
-    }
-    print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
-    for label in sorted(sources):
-        path, cells = sources[label]
+    def rows_of(path):
         full = ROOT / path
         if not full.exists():
             esito.warning(f"measurement file missing, cannot recompute: {path}")
+            return None
+        return [json.loads(line)
+                for line in full.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    sources = {
+        # ---- the engine's own clock: what the engines publish -----------------
+        "tabbyapi d1": ("data/2026-10-03-d1-tabbyapi.jsonl",
+                        ("plain", "inject", "stream+inject", "stream"), "engine_ttft_s"),
+        "llamacpp d1": ("data/2026-10-03-d1-llamacpp.jsonl",
+                        ("plain", "inject", "stream+inject", "stream"), "engine_ttft_s"),
+        "ollama": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",), "engine_ttft_s"),
+        "llamacpp (same file)": ("data/2026-10-03-cfg-8093.jsonl", ("plain",), "engine_ttft_s"),
+        "lmstudio": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",), "engine_ttft_s"),
+        "tabbyapi": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",), "engine_ttft_s"),
+        "control: KV q4_0": ("data/2026-10-03-cfg-8094.jsonl", ("plain",), "engine_ttft_s"),
+        "control: 4 slots": ("data/2026-10-03-cfg-8096.jsonl", ("plain",), "engine_ttft_s"),
+        "control: max-tokens 1": ("data/2026-10-03-maxtok-1.jsonl", ("plain",), "engine_ttft_s"),
+        "control: max-tokens 256": ("data/2026-10-03-maxtok-256.jsonl", ("plain",), "engine_ttft_s"),
+        # ---- the client's clock on streamed requests: the ranking column ------
+        "CLIENT llamacpp": ("data/2026-10-03-stream-llamacpp.jsonl", ("stream",), "client_ttft_s"),
+        "CLIENT tabbyapi": ("data/2026-10-03-stream-tabbyapi.jsonl", ("stream",), "client_ttft_s"),
+        "CLIENT ollama": ("data/2026-10-03-stream-ollama.jsonl", ("stream",), "client_ttft_s"),
+        "CLIENT lmstudio": ("data/2026-10-03-stream-lmstudio.jsonl", ("stream",), "client_ttft_s"),
+        # ---- the same requests on the engine's clock: the gap -----------------
+        "ENGINE llamacpp": ("data/2026-10-03-stream-llamacpp.jsonl", ("stream",), "engine_ttft_s"),
+        "ENGINE tabbyapi": ("data/2026-10-03-stream-tabbyapi.jsonl", ("stream",), "engine_ttft_s"),
+        "ENGINE ollama": ("data/2026-10-03-stream-ollama.jsonl", ("stream",), "engine_ttft_s"),
+        "ENGINE lmstudio": ("data/2026-10-03-stream-lmstudio.jsonl", ("stream",), "engine_ttft_s"),
+        # ---- the prose control, and the counterbalance for its order ----------
+        "prose: vocabulary": ("data/2026-10-03-prosa-vocab.jsonl", ("plain",), "engine_ttft_s"),
+        "prose: real prose": ("data/2026-10-03-prosa-corpus.jsonl", ("plain",), "engine_ttft_s"),
+        "order 1 vocabulary": ("data/2026-10-03-ordine-vocab-1.jsonl", ("plain",), "engine_ttft_s"),
+        "order 1 prose": ("data/2026-10-03-ordine-corpus-1.jsonl", ("plain",), "engine_ttft_s"),
+        "order 2 vocabulary": ("data/2026-10-03-ordine-vocab-2.jsonl", ("plain",), "engine_ttft_s"),
+        "order 2 prose": ("data/2026-10-03-ordine-corpus-2.jsonl", ("plain",), "engine_ttft_s"),
+        # ---- the dense grid: is TabbyAPI's window a straight line? ------------
+        "curvature grid": ("data/2026-10-03-curva-tabbyapi.jsonl", ("plain",), "engine_ttft_s"),
+    }
+
+    print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
+    for label in sorted(sources):
+        path, cells, clock = sources[label]
+        rows = rows_of(path)
+        if rows is None:
             continue
-        rows = [json.loads(line) for line in full.read_text(encoding="utf-8").splitlines() if line.strip()]
         for cell in cells:
-            line = fit(rows, cell)
+            line = fit(rows, cell, clock)
             if line:
-                print("    %-16s %-14s fixed %.3f s   throughput %6.0f tok/s   R2=%.4f  (%d lengths)"
+                print("    %-22s %-14s fixed %.3f s   throughput %6.0f tok/s   R2=%.4f  (%d lengths)"
                       % (label, cell, line[0], line[1], line[2], line[3]))
+            elif not any(r.get(clock) for r in rows):
+                print("    %-22s %-14s -- no %s on this path"
+                      % (label, cell, clock.replace("_ttft_s", "")))
         esito.checks += len(cells)
+
+    # The token counts behind the prose control. The fit above uses the tokens
+    # the engine reports, so it survives this; a reader who divides time by
+    # words does not, because the same word count is a different amount of work
+    # depending on which words.
+    voc = rows_of("data/2026-10-03-prosa-vocab.jsonl")
+    pro = rows_of("data/2026-10-03-prosa-corpus.jsonl")
+    if voc and pro:
+        print("    prose control, tokens for the same word count:")
+        for words in sorted({int(r["words"]) for r in pro
+                             if not r.get("discarded") and r.get("words")}):
+            tv = [r["uncached"] for r in voc
+                  if not r.get("discarded") and int(r.get("words") or 0) == words and r.get("uncached")]
+            tp = [r["uncached"] for r in pro
+                  if not r.get("discarded") and int(r.get("words") or 0) == words and r.get("uncached")]
+            if tv and tp:
+                print("      %5d words -> vocabulary %5d tokens, prose %5d tokens  (%.2fx)"
+                      % (words, statistics.median(tv), statistics.median(tp),
+                         statistics.median(tp) / statistics.median(tv)))
+        esito.checks += 1
 
 
 def main():

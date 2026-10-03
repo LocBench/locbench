@@ -71,30 +71,36 @@ def _same_cell(value, wanted):
     return value == wanted or value.startswith(wanted + "@")
 
 
-def line_for(rows, cell):
-    """Fit one cell across the lengths, on whichever window is available."""
+def line_for(rows, cell, clock="engine_ttft_s"):
+    """Fit one cell across the lengths, on one named clock.
+
+    The clock is a parameter and not a preference, because the engines do not
+    all report the same interval. Over identical streaming requests, llama.cpp's
+    reported window leaves 58 ms of each request uncounted and TabbyAPI's leaves
+    128: the first stops when the prompt has been evaluated, the second when the
+    first token has been sampled, and neither covers getting the bytes out.
+    Fitting both and printing the gap is the only way to see whether a gap
+    between two engines is a gap between two engines or between two stopwatches.
+
+    The earlier version picked whichever clock a row happened to have and fell
+    back silently -- so an engine with both would have been fitted on the engine
+    clock and an engine with only one on the client clock, and the two numbers
+    would have been printed in one column as if they were the same quantity.
+    """
     points = {}
     for row in rows:
         # prefix match: the sweep labels its cells plain@300, plain@1200...
         if row.get("discarded") or not _same_cell(row.get("cell"), cell):
             continue
         n = row.get("uncached") or row.get("prompt_tokens")
-        if row.get("engine_ttft_s") is not None:
-            window, source = row["engine_ttft_s"], "engine"
-        elif row.get("client_ttft_s") is not None:
-            window, source = row["client_ttft_s"], "client"
-        else:
+        window = row.get(clock)
+        if not n or window is None:
             continue
-        if not n or not window:
-            continue
-        points.setdefault(n, {"w": [], "src": set()})
-        points[n]["w"].append(window)
-        points[n]["src"].add(source)
+        points.setdefault(n, []).append(window)
     if len(points) < 3:
         return None
     xs = [float(n) for n in sorted(points)]
-    ys = [statistics.median(points[n]["w"]) for n in sorted(points)]
-    sources = set().union(*(points[n]["src"] for n in points))
+    ys = [statistics.median(points[n]) for n in sorted(points)]
     fit = A.ols([[1.0] * len(xs), xs], ys)
     if not fit:
         return None
@@ -115,7 +121,45 @@ def line_for(rows, cell):
         stderr = float("nan")
     return {"a": intercept, "se": stderr, "shortest": min(xs),
             "r": 1 / slope if slope > 0 else float("inf"),
-            "r2": r2, "n": count, "source": "+".join(sorted(sources))}
+            "r2": r2, "n": count, "clock": clock}
+
+
+def _cell(f):
+    """One fitted intercept, as a column. Absent is said, not left blank."""
+    if not f:
+        return "-- not on this clock"
+    return "%6.3f +/- %.3f s" % (f["a"], f["se"])
+
+
+def _streams(rows, cell):
+    """How much of the reply had arrived by the time the client saw its first
+    byte, as a fraction of the whole reply.
+
+    The client's clock is only a time-to-first-token if the engine actually
+    streams. An engine that buffers its answer sends one chunk at the end, and
+    then the client's "first token" is the entire response -- a number that
+    would sit in the ranking column looking exactly like a prefill window. This
+    is the guard against that, and it is why the column is printed rather than
+    assumed.
+    """
+    ratios = []
+    for row in rows:
+        if row.get("discarded") or not _same_cell(row.get("cell"), cell):
+            continue
+        t, total = row.get("client_ttft_s"), row.get("client_total_s")
+        if t is None or not total:
+            continue
+        ratios.append(t / total)
+    if not ratios:
+        return None
+    return statistics.median(ratios)
+
+
+def _gap(engine_fit, client_fit):
+    """What the engine's clock does not time, in seconds."""
+    if not engine_fit or not client_fit:
+        return "--"
+    return "%+.3f s" % (client_fit["a"] - engine_fit["a"])
 
 
 def main():
@@ -132,50 +176,70 @@ def main():
         return 2
 
     print()
-    print("D3 — the same four cells, engine against engine")
-    print("  comparing the '%s' cell, which needs no flag and no streaming" % args.cell)
+    print("D3 — the same cell, engine against engine")
+    print("  comparing the '%s' cell" % args.cell)
     print()
-    print("  %-30s %-22s %17s %7s %7s %3s  %s" % (
-        "engine / model", "version", "fixed cost", "tok/s", "R2", "n", "window from"))
-    print("  " + "-" * 100)
+    print("  %-26s %-18s %19s %19s %9s %8s" % (
+        "engine / model", "version", "engine's clock", "client's clock", "gap", "streams"))
+    print("  " + "-" * 105)
 
     fitted = {}
     for engine, model in sorted(runs, key=lambda k: (k[0] or "", k[1] or "")):
         run = runs[(engine, model)]
-        line = line_for(run["rows"], args.cell)
+        fe = line_for(run["rows"], args.cell, "engine_ttft_s")
+        fc = line_for(run["rows"], args.cell, "client_ttft_s")
         label = "%s / %s" % (engine, (model or "?").split("/")[-1])
-        if not line:
-            print("  %-30s %-22s   (not enough lengths to fit)" % (
-                label[:30], (run["version"] or "unknown")[:22]))
+        if not fe and not fc:
+            print("  %-26s %-18s   (not enough lengths to fit)" % (
+                label[:26], (run["version"] or "unknown")[:18]))
             continue
-        fitted[label] = line
-        print("  %-30s %-22s %7.3f +/- %.4f s %7.0f %7.4f %3d  %s" % (
-            label[:30], (run["version"] or "unknown")[:22],
-            line["a"], line["se"], line["r"], line["r2"], line["n"], line["source"]))
+        ratio = _streams(run["rows"], args.cell)
+        fitted[label] = {"engine": fe, "client": fc, "streams": ratio}
+        print("  %-26s %-18s %19s %19s %9s %8s" % (
+            label[:26], (run["version"] or "unknown")[:18],
+            _cell(fe), _cell(fc), _gap(fe, fc),
+            "%.0f%%" % (100 * ratio) if ratio is not None else "-"))
 
-    if len(fitted) >= 2:
-        same_instrument = len({f["source"] for f in fitted.values()}) == 1
-        print()
-        print("  VERDICT")
-        if not same_instrument:
-            print("    The windows are not all measured by the same instrument.")
-            print("    An engine that reports its own timing and one that does not")
-            print("    cannot have their intercepts subtracted: part of the")
-            print("    difference belongs to the clock, not to the engine. Rows")
-            print("    say which is which.")
-        values = {e: f["a"] for e, f in fitted.items()}
-        lo, hi = min(values.values()), max(values.values())
-        print("    fixed cost by engine: %s"
-              % ", ".join("%s %.3f s" % (e.split(" / ")[0], a) for e, a in sorted(values.items())))
-        print("    spread: %.3f s (%.1fx between the smallest and the largest)"
-              % (hi - lo, (hi / lo) if lo > 0 else float("inf")))
-        if hi - lo < 0.05:
-            print("    -> the engines agree within 50 ms. Whatever the cost is, it")
-            print("       is not one engine's quirk.")
+    if len(fitted) < 2:
+        return 0
+
+    print()
+    print("  VERDICT")
+
+    gaps = {e: f["client"]["a"] - f["engine"]["a"]
+            for e, f in fitted.items() if f["engine"] and f["client"]}
+    if len(gaps) >= 2:
+        spread = max(gaps.values()) - min(gaps.values())
+        print("    what each engine's clock leaves untimed: %s"
+              % ", ".join("%s %.3f s" % (e.split(" / ")[0], g)
+                          for e, g in sorted(gaps.items())))
+        if spread > 0.030:
+            print("    -> %.0f ms apart. These are not the same instrument, so the" % (spread * 1000))
+            print("       engine's-clock column is comparing stopwatches as much as")
+            print("       engines. The client's clock is one clock measuring one")
+            print("       interval for every engine: that is the column to read.")
         else:
-            print("    -> they do not agree, and the engine that stands out is")
-            print("       paying something the others do not. Check the instrument")
-            print("       column before believing the size of it.")
+            print("    -> within %.0f ms of each other. The engine clocks time the" % (spread * 1000))
+            print("       same interval here, and either column will do.")
+
+    buffered = {e: f["streams"] for e, f in fitted.items()
+                if f.get("streams") is not None and f["streams"] > 0.5}
+    if buffered:
+        print("    -> these engines do not stream: %s" % ", ".join(
+            "%s (%.0f%% of the reply had arrived)" % (e.split(" / ")[0], 100 * r)
+            for e, r in sorted(buffered.items())))
+        print("       For those rows the client's clock is the whole reply, not a")
+        print("       time to first token, and they must not be ranked on it.")
+
+    for clock, name in (("client", "the client's clock"), ("engine", "the engine's clock")):
+        values = {e: f[clock]["a"] for e, f in fitted.items() if f[clock]}
+        if len(values) < 2:
+            continue
+        lo, hi = min(values.values()), max(values.values())
+        print("    on %s: %s" % (name, ", ".join(
+            "%s %.3f s" % (e.split(" / ")[0], a) for e, a in sorted(values.items()))))
+        print("       spread %.3f s (%.1fx between the smallest and the largest)"
+              % (hi - lo, (hi / lo) if lo > 0 else float("inf")))
     return 0
 
 

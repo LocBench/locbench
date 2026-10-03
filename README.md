@@ -92,6 +92,11 @@ Ollama · llama.cpp · LM Studio · EXL3 (TabbyAPI), on the same machine.
 3. **Discarded measurements are recorded**, with the reason: the ones that
    vanish without explanation are how a measurement bench lies
 4. **Everything is redone with one command**, from the raw data
+5. **A comparison uses one clock.** An engine's own reported window is a
+   cross-check, never the source: the four engines do not time the same
+   interval, and two of them publish no timing at all. Ranking engines means
+   timing every one of them with the client, in streaming, where that clock
+   exists
 
 ## Licence
 
