@@ -54,11 +54,23 @@ def load(paths):
     return runs
 
 
+def _same_cell(value, wanted):
+    """A cell is the same cell, or the same cell at a given length.
+
+    A plain prefix match is wrong and wrong quietly:
+    "stream+inject".startswith("stream") is true, so a fit labelled `stream`
+    absorbs the `stream+inject` rows and reports a line belonging to neither.
+    """
+    value = str(value or "")
+    return value == wanted or value.startswith(wanted + "@")
+
+
 def line_for(rows, cell):
     """Fit one cell across the lengths, on whichever window is available."""
     points = {}
     for row in rows:
-        if row.get("discarded") or row.get("cell") != cell:
+        # prefix match: the sweep labels its cells plain@300, plain@1200...
+        if row.get("discarded") or not _same_cell(row.get("cell"), cell):
             continue
         n = row.get("uncached") or row.get("prompt_tokens")
         if row.get("engine_ttft_s") is not None:

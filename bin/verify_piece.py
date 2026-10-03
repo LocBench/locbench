@@ -20,6 +20,7 @@ Exits with code 1 if there is at least one error: it is meant to be a gate, not
 a report to read.
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -220,6 +221,78 @@ def check_numbers(report):
     return expected
 
 
+def _same_cell(value, wanted):
+    """A cell is the same cell, or the same cell at a given length.
+
+    Prefix matching alone is not enough and the failure is silent:
+    "stream+inject".startswith("stream") is true, so a fit labelled `stream`
+    quietly absorbed the `stream+inject` rows and reported a line belonging to
+    neither. It was caught by a recomputation disagreeing with an earlier one,
+    which is the only way this kind of thing ever shows up.
+    """
+    value = str(value or "")
+    return value == wanted or value.startswith(wanted + "@")
+
+
+def check_measurements(esito):
+    """Recompute the fits the measurement pieces rest on, and print them.
+
+    The first piece rests on the September log; the second on the controlled
+    sessions of 3 October. Both are recomputed from the committed files, here,
+    so that a number written into a piece can be compared with a number derived
+    from the data rather than with a number remembered from earlier.
+
+    It prints rather than asserts, which is the same split as the section above:
+    the comparing is done by whoever reads, and what the tool guarantees is that
+    there is something to compare against.
+    """
+    import statistics
+    sys.path.insert(0, str(ROOT / "bench"))
+    import analyze_log as A
+
+    def fit(rows, cell):
+        points = {}
+        for row in rows:
+            if row.get("discarded") or not _same_cell(row.get("cell"), cell):
+                continue
+            n, w = row.get("uncached"), row.get("engine_ttft_s")
+            if not n or w is None:
+                continue
+            points.setdefault(n, []).append(w)
+        if len(points) < 3:
+            return None
+        xs = sorted(points)
+        x = [float(i) for i in xs]
+        y = [statistics.median(points[i]) for i in xs]
+        result = A.ols([[1.0] * len(x), x], y)
+        if not result:
+            return None
+        (a, b), r2, n = result
+        return a, (1 / b if b > 0 else float("inf")), r2, n
+
+    sources = {
+        "tabbyapi d1": ("data/2026-10-03-d1-tabbyapi.jsonl", ("plain", "inject", "stream+inject")),
+        "llamacpp d1": ("data/2026-10-03-d1-llamacpp.jsonl",
+                        ("plain", "inject", "stream+inject", "stream")),
+        "ollama sweep": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",)),
+        "llamacpp sweep": ("data/2026-10-03-sweep-llamacpp.jsonl", ("plain",)),
+    }
+    print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
+    for label in sorted(sources):
+        path, cells = sources[label]
+        full = ROOT / path
+        if not full.exists():
+            esito.warning(f"measurement file missing, cannot recompute: {path}")
+            continue
+        rows = [json.loads(line) for line in full.read_text(encoding="utf-8").splitlines() if line.strip()]
+        for cell in cells:
+            line = fit(rows, cell)
+            if line:
+                print("    %-16s %-14s fixed %.3f s   throughput %6.0f tok/s   R2=%.4f  (%d lengths)"
+                      % (label, cell, line[0], line[1], line[2], line[3]))
+        esito.checks += len(cells)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -250,7 +323,8 @@ def main():
     # whoever reads. An automatic "this number is not cited" check produces
     # false positives on any document that does not list everything, and a gate
     # that cries wolf teaches people to stop reading it.
-    print("\n=== numbers, recomputed now ===")
+    check_measurements(report)
+    print("\n=== numbers from the September log, recomputed now ===")
     check_numbers(report)
 
     print(f"\n{report.checks} checks, {len(report.errors)} errors, {len(report.warnings)} warnings")
