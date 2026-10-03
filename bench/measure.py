@@ -560,7 +560,14 @@ def _from_usage(usage):
     prompt_tokens = usage.get("prompt_tokens")
     cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
     reported = usage.get("prompt_tokens_per_sec")
-    uncached = None
+    # An engine that reports a token count and no cache has reported the work:
+    # nothing was said to have been reused. `cached_tokens` still records that
+    # the engine was silent -- zero and null are different facts, and the
+    # protocol says so -- but `uncached` has to be a number, because it is the
+    # x-axis of every fit here. Leaving it null when the cache field was merely
+    # absent cost a whole LM Studio run: every row came back with no x-axis and
+    # the sweep could not be fitted at all.
+    uncached = prompt_tokens
     engine_ttft = None
     if prompt_tokens is not None and cached is not None:
         uncached = prompt_tokens - cached

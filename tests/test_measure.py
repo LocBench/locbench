@@ -33,6 +33,7 @@ class FakeEngine(BaseHTTPRequestHandler):
     fail_next = 0
     report_usage = True
     report_timings = True
+    report_cached = True
     put_text_in_reasoning = False
     version = "9.9.9-test"
 
@@ -67,11 +68,11 @@ class FakeEngine(BaseHTTPRequestHandler):
         prompt_tokens = len(text.split()) + 5
         # Half the prompt reported as already cached, in the same field names a
         # real engine uses, so the read-back path is exercised rather than
-        # bypassed.
-        cached = prompt_tokens // 2
-        usage = {"prompt_tokens": prompt_tokens,
-                 "prompt_tokens_details": {"cached_tokens": cached},
-                 "completion_tokens": 20}
+        # bypassed. `report_cached` turns the field off the way LM Studio's
+        # OpenAI endpoint does: the count is there and the cache detail is not.
+        usage = {"prompt_tokens": prompt_tokens, "completion_tokens": 20}
+        if FakeEngine.report_cached:
+            usage["prompt_tokens_details"] = {"cached_tokens": prompt_tokens // 2}
         if FakeEngine.report_timings:
             # TabbyAPI publishes these. Ollama's OpenAI endpoint publishes none
             # of them, which is why `report_timings` exists.
@@ -110,6 +111,7 @@ def engine():
     FakeEngine.received = []
     FakeEngine.fail_next = 0
     FakeEngine.report_usage = True
+    FakeEngine.report_cached = True
     server = ThreadingHTTPServer(("127.0.0.1", 0), FakeEngine)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -358,6 +360,39 @@ def test_an_engine_that_publishes_no_rate_is_still_measured(engine, tmp_path):
     assert row["prompt_tokens"] == 6              # but the counts are there
     assert row["client_ttft_s"] is not None       # and the client measured anyway
     assert measure._generation_speed(row) is not None
+
+
+def test_an_engine_that_reports_no_cache_still_has_an_x_axis(engine, tmp_path):
+    """Silence about the cache is not silence about the token count.
+
+    LM Studio's OpenAI endpoint returns `usage.prompt_tokens` and no
+    `prompt_tokens_details`, so `cached_tokens` is absent. The client used to
+    require both before it would compute `uncached`, which left every row of a
+    streamed LM Studio sweep with no x-axis -- twenty-one requests, all recorded,
+    none fittable, and nothing in the output saying why.
+
+    Zero and null are still different facts and `cached_tokens` keeps them
+    apart: 0 is an engine saying nothing was reused, absent is an engine that
+    does not say.
+    """
+    session, _ = a_session(engine, tmp_path)
+    FakeEngine.report_cached = False
+    row = session.request("hello", stream=True, inject_usage=True)
+
+    assert row["prompt_tokens"] == 6
+    assert row["cached_tokens"] is None, "an unreported cache became a number"
+    assert row["uncached"] == 6, "the x-axis went missing"
+
+
+def test_an_engine_that_reports_a_cache_still_subtracts_it(engine, tmp_path):
+    """The other half of the same rule: when the engine does say how much it
+    reused, that has to come off the count, or a cached request is charged as
+    full work."""
+    session, _ = a_session(engine, tmp_path)
+    FakeEngine.report_cached = True
+    row = session.request("hello", stream=False, inject_usage=True)
+    assert row["cached_tokens"] == 3
+    assert row["uncached"] == 3
 
 
 def test_the_three_names_for_a_piece_of_text():
