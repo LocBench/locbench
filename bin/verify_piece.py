@@ -129,6 +129,74 @@ def _check_citation(m, seen, report):
         print(f"    ok  {path}:{start}-{end}  ->  {body[0][:60]}")
 
 
+RE_CITA = re.compile(r"`?([\w./-]+\.(?:py|cpp|hpp|h|c|sh)):(\d+)(?:-(\d+))?`?")
+# A line is treated as quoted code only if it looks like code. Without this the
+# whole body of a post -- which is one fenced block, because it is meant to be
+# pasted -- gets read as source and every sentence becomes a violation.
+RE_CODICE = re.compile(r"[=;{}]|->|::|\(.*\)\s*[,;]?\s*$")
+
+
+def _righe_del_file(percorso):
+    """The lines of a cited file, resolved the same way a citation is.
+
+    One resolver, not two: a second search path invented here would find files
+    the citation check does not, or miss ones it does, and the two would drift.
+    """
+    trovato = _find(percorso)
+    if trovato is None:
+        return None
+    try:
+        return [l.strip() for l in trovato.read_text(errors="replace").splitlines()]
+    except OSError:
+        return None
+
+
+def _blocco_sotto(coda):
+    """The first code block within a few lines of the citation, or nothing.
+
+    Bounded on purpose. Searching to the end of the document instead let a
+    citation in the protocol reach a block four sections later and call it a
+    misquote, which is the kind of warning that teaches a reader to skip them.
+    """
+    testa = coda[:400]
+    m = re.search(r"```\w*\n(.*?)```", testa, re.S)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?m)^((?: {4}|\t)\S.*(?:\n(?: {4}|\t).*)*)", testa)
+    return m.group(1) if m else None
+
+
+def check_quotes(text, report):
+    """A cited line number and the block under it have to agree.
+
+    This is the check that was missing when a post went out quoting TabbyAPI's
+    `prompt_ts` as two clean lines, with the zero guard and the rounding
+    removed. The source says otherwise, and the audience for that post opens the
+    source. The old check inspected only fenced blocks carrying a language tag;
+    there are none in this repository, so it examined nothing and printed
+    nothing -- which reads exactly like passing.
+    """
+    for m in RE_CITA.finditer(text):
+        percorso, riga = m.group(1), int(m.group(2))
+        blocco = _blocco_sotto(text[m.end():])
+        if not blocco:
+            continue
+        righe = _righe_del_file(percorso)
+        if righe is None:
+            report.warning(f"cited source not found on disk: {percorso}")
+            continue
+        for linea in blocco.splitlines():
+            r = linea.strip()
+            if len(r) < 25 or r.startswith(("#", "//", "*", "$", "<!--")):
+                continue
+            if not RE_CODICE.search(r):
+                continue
+            report.checks += 1
+            if not any(r == sorgente or r in sorgente for sorgente in righe):
+                report.warning("quoted under %s:%d but not in that file: %s"
+                               % (percorso, riga, r[:66]))
+
+
 def check_code(text, report):
     """Quoted lines of code must exist in one of the sources."""
     for lang, body in RE_BLOCK.findall(text):
@@ -409,6 +477,7 @@ def main():
         print("  code:")
         check_code(text, report)
 
+        check_quotes(text, report)
     # Values are recomputed and printed; comparing them to the text is for
     # whoever reads. An automatic "this number is not cited" check produces
     # false positives on any document that does not list everything, and a gate

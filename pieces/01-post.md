@@ -28,7 +28,11 @@ actually is, so I read the source of two engines.
 **TabbyAPI**, over exllamav3 — `backends/exllamav3/model.py:1442`:
 
     prompt_time = round(result.get("time_prefill"), 2)
-    prompt_ts   = (prompt_tokens - cached_tokens) / prompt_time
+    prompt_ts = (
+        "Indeterminate"
+        if prompt_time == 0
+        else round((prompt_tokens - cached_tokens) / prompt_time, 2)
+    )
 
 Careful numerator: uncached tokens. But `time_prefill` comes from exllamav3,
 where it is documented in `generator/generator.py:498` as:

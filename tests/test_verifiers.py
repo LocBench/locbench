@@ -144,3 +144,77 @@ def test_a_correct_citation_produces_no_errors(tmp_path, monkeypatch):
     vp.check_citations("see `sub/file.py`, lines 1-3", e)
     assert e.errors == []
     assert e.checks == 1
+
+
+# ------------------------------------------------- a quote under a citation
+
+def _fake_source_con_codice(tmp_path, monkeypatch):
+    root = tmp_path / "src"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "file.py").write_text(
+        'prompt_tokens = result.get("prompt_tokens")\n'
+        'prompt_time = round(result.get("time_prefill"), 2)\n'
+        'prompt_ts = (\n'
+        '    "Indeterminate"\n'
+        '    if prompt_time == 0\n'
+        '    else round((prompt_tokens - cached_tokens) / prompt_time, 2)\n'
+        ')\n', encoding="utf-8")
+    monkeypatch.setattr(vp, "SOURCE_ROOTS", [root])
+    vp._CACHE_RIGHE = None
+    return root
+
+
+def test_a_paraphrased_quote_under_a_citation_is_caught(tmp_path, monkeypatch):
+    """The one that got out. A post quoted TabbyAPI's `prompt_ts` as two clean
+    lines with the zero guard and the rounding removed, under the line number of
+    the real thing. The audience for that post opens the source, and the source
+    disagrees."""
+    _fake_source_con_codice(tmp_path, monkeypatch)
+    e = vp.Report()
+    vp.check_quotes(
+        "see `sub/file.py:2`:\n\n"
+        '    prompt_time = round(result.get("time_prefill"), 2)\n'
+        '    prompt_ts   = (prompt_tokens - cached_tokens) / prompt_time\n',
+        e)
+    assert any("not in that file" in w for w in e.warnings), e.warnings
+
+
+def test_an_exact_quote_under_a_citation_is_not_flagged(tmp_path, monkeypatch):
+    _fake_source_con_codice(tmp_path, monkeypatch)
+    e = vp.Report()
+    vp.check_quotes(
+        "see `sub/file.py:2`:\n\n"
+        '    prompt_time = round(result.get("time_prefill"), 2)\n'
+        '    else round((prompt_tokens - cached_tokens) / prompt_time, 2)\n',
+        e)
+    assert e.warnings == []
+    assert e.checks >= 2
+
+
+def test_prose_under_a_citation_is_not_read_as_code(tmp_path, monkeypatch):
+    """The whole body of a post is one fenced block, because a post is meant to
+    be pasted. Reading every long line in it as a quotation turns each sentence
+    into a violation, and a gate that cries wolf is a gate nobody reads by the
+    time it matters."""
+    _fake_source_con_codice(tmp_path, monkeypatch)
+    e = vp.Report()
+    vp.check_quotes(
+        "see `sub/file.py:2`:\n\n"
+        "    Careful numerator: uncached tokens. The window comes from elsewhere\n"
+        "    and it is documented as the time up to the first token produced.\n",
+        e)
+    assert e.warnings == []
+    assert e.checks == 0
+
+
+def test_a_block_far_from_the_citation_is_not_attributed_to_it(tmp_path, monkeypatch):
+    """The window is bounded on purpose. Searching to the end of the document
+    let a citation reach a block four sections later and call it a misquote."""
+    _fake_source_con_codice(tmp_path, monkeypatch)
+    e = vp.Report()
+    vp.check_quotes(
+        "see `sub/file.py:2`.\n\n"
+        + "More prose here, several paragraphs of it, going on for a while.\n" * 6
+        + '\n    prompt_ts   = (prompt_tokens - cached_tokens) / prompt_time\n',
+        e)
+    assert e.checks == 0, "a distant block was attributed to the citation"
