@@ -332,6 +332,13 @@ class Session:
         # A model left resident from an earlier session is exactly the kind of
         # thing that turns two measurements into one measurement of two things.
         self.vram_at_start = gpu_state()
+        # Every session draws fresh prompt text, so that no request can be
+        # answered from a cache warmed by an earlier one -- including by an
+        # earlier *run*, which is the case that got through once. Reproducing
+        # the results means running the same procedure, not sending the same
+        # bytes: what the data records is the uncached count the engine reports,
+        # and that is what the fit uses.
+        self.salt = random.randrange(1, 10_000_000)
 
     # ---- one request
 
@@ -688,18 +695,20 @@ def experiment_sweep(session, lengths, max_tokens=64):
     # to be asked on the API that does. Two of the four are like that, and each
     # one keeps its window somewhere different.
     native = {"ollama": ollama_native, "lmstudio": lmstudio_native}.get(session.engine)
+    # The salt is the session, and it is not decoration. Seeding the shared half
+    # with the length alone made every repetition of a length send the same
+    # prefix, and llama.cpp's cache reused it. Seeding it with the length and
+    # the repetition fixed that within a run and left it across runs: two sweeps
+    # back to back on the same engine sent identical prompts, the second found
+    # them all in cache, and its points landed at 16, 108, 224 and 240 uncached
+    # tokens instead of at the four lengths it was asked for. The fit still
+    # produced a line, which is the trouble -- a two-point fit over a range that
+    # small looks as confident as any other.
+    salt = session.salt
     for repetition in range(1, session.repetitions + 1):
         for words in lengths:
-            # The shared half is seeded with the repetition as well as the
-            # length. Seeding it with the length alone made every repetition of
-            # the same length produce the same prefix, and llama.cpp's prefix
-            # cache quietly reused it -- `cached_tokens` came back at 790, 1590
-            # and 3590 where it should have been zero. The fit survived it
-            # because it works from the uncached count the engine reports and
-            # not from the label, but the measurement was no longer the one
-            # being asked for.
-            prompt = build_prompt(100_000 + words * 7 + repetition * 1_000_003,
-                                  words, 800_000 + repetition * 13 + words, 40)
+            prompt = build_prompt(salt + 100_000 + words * 7 + repetition * 1_000_003,
+                                  words, salt + 800_000 + repetition * 13 + words, 40)
             if native:
                 clock = native(session.url, session.model, prompt, max_tokens=max_tokens)
                 if clock is None:

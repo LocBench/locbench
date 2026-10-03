@@ -227,6 +227,28 @@ def test_the_sweep_can_hold_the_generation_length_fixed(engine, tmp_path):
     assert {p.get("max_tokens") for p in FakeEngine.received} == {7}
 
 
+def test_two_sessions_do_not_send_the_same_prompts(engine, tmp_path):
+    """Consecutive runs on the same engine must not reuse each other's prefixes.
+
+    This got through once. The seed was fixed for the repetition but not for the
+    run, so two sweeps back to back sent identical prompts, the engine answered
+    the second one almost entirely from cache, and its four points landed at 16,
+    108, 224 and 240 uncached tokens instead of at the four lengths asked for.
+    The fit produced a line anyway, over a range twenty times too small, and
+    looked exactly as confident as a real one.
+    """
+    first, _ = a_session(engine, tmp_path)
+    measure.experiment_sweep(first, [40, 80])
+    sent_first = {p["messages"][0]["content"] for p in FakeEngine.received}
+
+    FakeEngine.received = []
+    second, _ = a_session(engine, tmp_path)
+    measure.experiment_sweep(second, [40, 80])
+    sent_second = {p["messages"][0]["content"] for p in FakeEngine.received}
+
+    assert not (sent_first & sent_second), "two sessions sent the same prompts"
+
+
 def test_a_failed_request_is_recorded_not_dropped(engine, tmp_path):
     """The rule from the protocol: a measurement that disappears without
     explanation is how a bench lies."""

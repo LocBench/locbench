@@ -34,23 +34,28 @@ import analyze_log as A
 
 
 def load(paths):
-    """(engine, version) -> the rows, plus which engine said what."""
+    """(engine, model) -> the rows.
+
+    Keyed by engine *and* model, not by engine alone. Grouping on the engine
+    pools every file that mentions it, and a directory holding a base model, its
+    uncensored twin and a control experiment on the same engine then produces one
+    "tabbyapi" line averaged across all three. The number looks like a
+    measurement and is a mixture.
+    """
     runs = {}
     for pattern in paths:
         for path in sorted(glob.glob(pattern)):
-            engine = version = None
             rows = []
             for line in Path(path).read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                rows.append(row)
-                engine = engine or row.get("engine")
-                version = version or row.get("version")
-            if engine:
-                runs.setdefault(engine, {"version": version, "rows": [], "files": []})
-                runs[engine]["rows"].extend(rows)
-                runs[engine]["files"].append(Path(path).name)
+                if line.strip():
+                    rows.append(json.loads(line))
+            if not rows:
+                continue
+            first = rows[0]
+            key = (first.get("engine"), first.get("model"))
+            entry = runs.setdefault(key, {"version": first.get("version"), "rows": [], "files": []})
+            entry["rows"].extend(rows)
+            entry["files"].append(Path(path).name)
     return runs
 
 
@@ -115,20 +120,21 @@ def main():
     print("  comparing the '%s' cell, which needs no flag and no streaming" % args.cell)
     print()
     print("  %-12s %-42s %9s %9s %8s %7s %s" % (
-        "engine", "version", "fixed", "tok/s", "R2", "points", "window from"))
+        "engine / model", "version", "fixed", "tok/s", "R2", "points", "window from"))
     print("  " + "-" * 100)
 
     fitted = {}
-    for engine in sorted(runs):
-        run = runs[engine]
+    for engine, model in sorted(runs, key=lambda k: (k[0] or "", k[1] or "")):
+        run = runs[(engine, model)]
         line = line_for(run["rows"], args.cell)
+        label = "%s / %s" % (engine, (model or "?").split("/")[-1])
         if not line:
-            print("  %-12s %-42s   (not enough lengths to fit)" % (
-                engine, (run["version"] or "unknown")[:42]))
+            print("  %-34s %-30s   (not enough lengths to fit)" % (
+                label[:34], (run["version"] or "unknown")[:30]))
             continue
-        fitted[engine] = line
-        print("  %-12s %-42s %7.3f s %9.0f %8.4f %7d %s" % (
-            engine, (run["version"] or "unknown")[:42],
+        fitted[label] = line
+        print("  %-34s %-30s %7.3f s %9.0f %8.4f %7d %s" % (
+            label[:34], (run["version"] or "unknown")[:30],
             line["a"], line["r"], line["r2"], line["n"], line["source"]))
 
     if len(fitted) >= 2:
