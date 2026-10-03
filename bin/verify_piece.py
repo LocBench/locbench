@@ -271,15 +271,18 @@ def check_measurements(esito):
         return a, (1 / b if b > 0 else float("inf")), r2, n
 
     sources = {
-        "tabbyapi d1": ("data/2026-10-03-d1-tabbyapi.jsonl", ("plain", "inject", "stream+inject")),
+        "tabbyapi d1": ("data/2026-10-03-d1-tabbyapi.jsonl",
+                        ("plain", "inject", "stream+inject", "stream")),
         "llamacpp d1": ("data/2026-10-03-d1-llamacpp.jsonl",
                         ("plain", "inject", "stream+inject", "stream")),
-        "ollama sweep": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",)),
-        "llamacpp sweep": ("data/2026-10-03-sweep-llamacpp.jsonl", ("plain",)),
-        "lmstudio sweep": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",)),
-        "tabbyapi uncensored": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",)),
-        "max-tokens 1": ("data/2026-10-03-maxtok-1.jsonl", ("plain",)),
-        "max-tokens 256": ("data/2026-10-03-maxtok-256.jsonl", ("plain",)),
+        "ollama": ("data/2026-10-03-sweep-ollama.jsonl", ("plain",)),
+        "llamacpp (same file)": ("data/2026-10-03-cfg-8093.jsonl", ("plain",)),
+        "lmstudio": ("data/2026-10-03-sweep-lmstudio.jsonl", ("plain",)),
+        "tabbyapi": ("data/2026-10-03-sweep-tabbyapi.jsonl", ("plain",)),
+        "control: KV q4_0": ("data/2026-10-03-cfg-8094.jsonl", ("plain",)),
+        "control: 4 slots": ("data/2026-10-03-cfg-8096.jsonl", ("plain",)),
+        "control: max-tokens 1": ("data/2026-10-03-maxtok-1.jsonl", ("plain",)),
+        "control: max-tokens 256": ("data/2026-10-03-maxtok-256.jsonl", ("plain",)),
     }
     print("\n=== numbers, recomputed now (compare them to the text by eye) ===")
     for label in sorted(sources):

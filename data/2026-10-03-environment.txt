@@ -1,15 +1,15 @@
 LocBench — environment
-captured               2026-10-03T16:21:06+02:00
+captured               2026-10-03T17:07:44+02:00
 gpu                    NVIDIA GeForce RTX 3090
 vram                   24576 MiB
 driver                 595.99.02
-vram in use            21855 MiB
+vram in use            1166 MiB
 cpu                    Intel(R) Core(TM) Ultra 7 265KF
 threads                20
 ram                    62 GiB
 os                     Nobara Linux 44 (KDE Plasma Desktop Edition)
 kernel                 7.2.6-201.nobara.fc44.x86_64
-tabbyapi               running, version not declared
+tabbyapi               not answering at http://127.0.0.1:8091
 llama.cpp              not answering at http://127.0.0.1:8090
 lmstudio               running, version not declared
 ollama                 0.34.4
