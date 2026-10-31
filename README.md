@@ -180,6 +180,9 @@ LocBench is built and measured by [@GiovanniOsserv1](https://x.com/GiovanniOsser
 on one RTX 3090. The numbers are mine; the mistakes are mine too, and the
 corrections are the point.
 
+LocBench is independent: no engine vendor paid for, reviewed, or approved these
+measurements. When a number is wrong, the correction is published with the data.
+
 > Everything here is in English: this file, the protocol, the pieces, the commit
 > messages, the file and directory names, the analysis output and the CSV column
 > names. Nothing is left in another language for a reader to stumble into.

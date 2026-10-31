@@ -70,14 +70,15 @@ pass and the buffers it is handed rather than at the front door.
 The one thing that holds on both is LM Studio being last, and how strongly that
 holds changes too: 4.1 sigma on the 27B, 1.3 on the 8B.
 
-**If you run LM Studio on an NVIDIA card, this is the part worth your time.** It
-is 36% slower than llama.cpp on the identical file, and it is not LM Studio:
+**If you run LM Studio on an NVIDIA card, this is the part worth your time.** On
+this machine it is 36% slower than llama.cpp on the identical file, and it is not
+LM Studio:
 
     $ lms runtime ls
     llama.cpp-linux-x86_64-nvidia-cuda-avx2@2.41.0
     llama.cpp-linux-x86_64-vulkan-avx2@2.51.0      <- selected
 
-It runs the **Vulkan** build. Selecting CUDA makes it abort inside
+It runs the **Vulkan** build. On this machine, selecting CUDA made it abort inside
 `llama_context`, or load without offloading at all -- 756 MiB of VRAM, the model
 in system memory, a minute per short request. And at a 64k context it fails to
 allocate the 256 MiB its speculative decoding context wants, with 23 GB nominally
@@ -121,7 +122,7 @@ If LM Studio feels slow on an NVIDIA card, check which llama.cpp build it picked
 
   llama.cpp-...-vulkan-avx2   <- selected
 
-Its CUDA builds abort or load without offloading. On Vulkan it gets 729 tok/s where llama.cpp on the same file gets 1145.
+On my 3090, the CUDA build aborted or loaded without offloading. On Vulkan it gets 729 tok/s where llama.cpp on the same file gets 1145.
 ```
 
 **Below it, as a reply:**

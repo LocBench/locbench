@@ -14,7 +14,7 @@ the main stays readable. Attach `pieces/fixed-cost-five.png` to the main post.
 ```
 The 4x was not the ceiling.
 
-A fifth engine — HyperQwen/vLLM — came in at 0.052 s per request: half of Ollama, 7.9x below LM Studio. Same 27B class, one RTX 3090. The four-engine 4x was the edge of the sample, not a law.
+A fifth engine — HyperQwen/vLLM — came in at 0.052 s per request: half of Ollama, and LM Studio's fixed cost is 7.9x higher. Same 27B class, one RTX 3090. The four-engine 4x was the edge of the sample, not a law.
 
 https://github.com/LocBench/locbench
 ```
