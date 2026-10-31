@@ -134,7 +134,7 @@ What is not done is in the pieces, item by item, rather than in a footnote:
 one machine, one card, one model, and prompts that are still not anyone's
 real workload.
 
-The piece published so far is in [`pieces/`](pieces/).
+The pieces published so far are in [`pieces/`](pieces/).
 
 > Everything here is in English: this file, the protocol, the pieces, the commit
 > messages, the file and directory names, the analysis output and the CSV column

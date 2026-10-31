@@ -211,7 +211,7 @@ Every published number carries this card. Without it, it is worth nothing.
 | CPU | Intel Core Ultra 7 265KF, 20 threads |
 | RAM | 62 GiB |
 | OS | Nobara 44 (Fedora), kernel 7.2.6 |
-| Engines | Ollama 0.34.4 · llama.cpp b11256 · LM Studio · TabbyAPI/EXL3 |
+| Engines | Ollama 0.34.4 · llama.cpp b427 (c85b92c) · LM Studio 69d945a · TabbyAPI be74bf0 / exllamav3 1.5.2 |
 | Reference model | `qwen3.8-27b-4.0bpw` (where available) |
 
 **The data in §1.2 does not come from the reference model.** It is 98 requests
