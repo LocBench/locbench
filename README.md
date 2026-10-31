@@ -99,6 +99,7 @@ bench/analyze_log.py       redoes the September analysis from the raw data
 bench/analyze_d1.py        one cell of D1, fitted across the lengths
 bench/plot_fixed_cost.py   the four engines on one clock, as a picture
 bench/plot_fixed_cost_five.py  the fifth engine, and the 7.9x
+bench/run_hyperqwen.sh     the fifth-engine campaign, with its key and warm-up
 bench/plot_social_preview.py  the 1280x640 card for the repository and X
 bench/environment.sh       the machine and the engine versions, as a card
 bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
