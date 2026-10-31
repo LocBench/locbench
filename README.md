@@ -163,6 +163,12 @@ The pieces published so far are in [`pieces/`](pieces/).
 **A number that does not reproduce is the most useful thing you can send:**
 see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Who
+
+LocBench is built and measured by [@GiovanniOsserv1](https://x.com/GiovanniOsserv1)
+on one RTX 3090. The numbers are mine; the mistakes are mine too, and the
+corrections are the point.
+
 > Everything here is in English: this file, the protocol, the pieces, the commit
 > messages, the file and directory names, the analysis output and the CSV column
 > names. Nothing is left in another language for a reader to stumble into.
