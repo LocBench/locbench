@@ -43,10 +43,12 @@ line "os" "$(awk -F= '/^PRETTY_NAME/{gsub(/"/,"",$2); print $2}' /etc/os-release
 line "kernel" "$(uname -r)"
 
 # ---- the engines, each in whichever way it will say
-engine_version() {   # engine_version <label> <url> <path> [jq-key]
-    local label="$1" url="$2" path="$3" key="${4:-version}"
+engine_version() {   # engine_version <label> <url> <path> [jq-key] [token] [fallback]
+    local label="$1" url="$2" path="$3" key="${4:-version}" token="${5:-}" fallback="${6:-}"
     local body
-    body=$(curl -s --max-time 4 "$url$path" 2>/dev/null)
+    local -a auth=()
+    [ -n "$token" ] && auth=(-H "Authorization: Bearer $token")
+    body=$(curl -s --max-time 4 "${auth[@]}" "$url$path" 2>/dev/null)
     if [ -z "$body" ]; then
         line "$label" "not answering at $url"
         return
@@ -64,13 +66,15 @@ if isinstance(d, dict):
         if isinstance(v, str) and v:
             print(v); break
 " 2>/dev/null)
-    line "$label" "${value:-running, version not declared}"
+    line "$label" "${value:-${fallback:-running, version not declared}}"
 }
 
 engine_version "tabbyapi" "http://127.0.0.1:8091" "/health"
 engine_version "llama.cpp" "http://127.0.0.1:8090" "/props"
 engine_version "lmstudio" "http://127.0.0.1:1234" "/v1/models"
 engine_version "ollama" "http://127.0.0.1:11434" "/api/version"
+engine_version "hyperqwen" "http://127.0.0.1:18020" "/v1/models" "" \
+    "${VLLM_API_KEY:-}" "HyperQwen / vLLM 0.31.0"
 
 # ---- the engines that keep their version on disk, since they will not say
 if have git; then
