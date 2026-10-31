@@ -55,6 +55,11 @@ ENGINES = {
     "llamacpp": {"url": "http://127.0.0.1:8090", "version": "/props"},
     "lmstudio": {"url": "http://127.0.0.1:1234", "version": "/v1/models"},
     "ollama":   {"url": "http://127.0.0.1:11434", "version": "/api/version"},
+    # The vLLM 0.31.0 container in ~/tools/HyperQwen. It serves the 27B
+    # W4A16 checkpoint on :18020, behind an API key. The version is what the
+    # installed image declares; /v1/models carries model names, not a build.
+    "hyperqwen": {"url": "http://127.0.0.1:18020", "version": "/v1/models",
+                  "version_label": "HyperQwen / vLLM 0.31.0"},
 }
 
 # A small vocabulary for building prompts of a controlled size. Words are short
@@ -90,13 +95,14 @@ VOCAB = (
 
 # --------------------------------------------------------------- transport
 
-def post_json(url, payload, timeout=600):
+def post_json(url, payload, timeout=600, headers=None):
     """A request that returns (status, parsed_body, raw_text)."""
     body = json.dumps(payload).encode()
+    request_headers = {"Content-Type": "application/json",
+                       "User-Agent": "locbench-measure/1.0"}
+    request_headers.update(headers or {})
     req = urllib.request.Request(
-        url, data=body, method="POST",
-        headers={"Content-Type": "application/json",
-                 "User-Agent": "locbench-measure/1.0"})
+        url, data=body, method="POST", headers=request_headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8", "replace")
@@ -106,8 +112,10 @@ def post_json(url, payload, timeout=600):
         return exc.code, _maybe_json(raw), raw
 
 
-def get_json(url, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": "locbench-measure/1.0"})
+def get_json(url, timeout=15, headers=None):
+    request_headers = {"User-Agent": "locbench-measure/1.0"}
+    request_headers.update(headers or {})
+    req = urllib.request.Request(url, headers=request_headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, _maybe_json(resp.read().decode("utf-8", "replace"))
@@ -122,7 +130,7 @@ def _maybe_json(raw):
         return None
 
 
-def stream_json(url, payload, timeout=600):
+def stream_json(url, payload, timeout=600, headers=None):
     """A streaming request, timed by the client.
 
     Returns (first_token_at, last_token_at, pieces, usage, timings, started_at).
@@ -139,10 +147,11 @@ def stream_json(url, payload, timeout=600):
     cross-check for the ones that do.
     """
     body = json.dumps(payload).encode()
+    request_headers = {"Content-Type": "application/json",
+                       "User-Agent": "locbench-measure/1.0"}
+    request_headers.update(headers or {})
     req = urllib.request.Request(
-        url, data=body, method="POST",
-        headers={"Content-Type": "application/json",
-                 "User-Agent": "locbench-measure/1.0"})
+        url, data=body, method="POST", headers=request_headers)
     started = time.perf_counter()
     first = last = None
     pieces = 0
@@ -219,7 +228,7 @@ def local_version(engine):
     return ", ".join(parts) if parts else ""
 
 
-def engine_version(engine, url):
+def engine_version(engine, url, api_key=None):
     """What version the engine says it is, or what it can be found to be.
 
     Three outcomes, and the third is honest rather than convenient: a version
@@ -228,8 +237,9 @@ def engine_version(engine, url):
     """
     path = ENGINES.get(engine, {}).get("version")
     declared = None
+    headers = {"Authorization": "Bearer " + api_key} if api_key else None
     if path:
-        status, body = get_json(url.rstrip("/") + path)
+        status, body = get_json(url.rstrip("/") + path, headers=headers)
         if status == 200 and isinstance(body, dict):
             for key in ("version", "build_info", "build", "model_version"):
                 value = body.get(key)
@@ -248,8 +258,10 @@ def engine_version(engine, url):
                                 break
     # A successful request that carries no version is not a version. TabbyAPI
     # answers /v1/model with the model's own details and never says which build
-    # it is, so the disk is asked instead of the socket.
-    return declared or local_version(engine) or "unknown"
+    # it is, so the disk is asked instead of the socket. HyperQwen is a pinned
+    # container: the label is what the installed image declares.
+    return (declared or ENGINES.get(engine, {}).get("version_label")
+            or local_version(engine) or "unknown")
 
 
 # Under this the card is doing desktop work and nothing else. Above it,
@@ -358,7 +370,8 @@ def build_prompt(shared_seed, shared_words, tail_seed, tail_words):
 class Session:
     """One measurement session against one engine."""
 
-    def __init__(self, engine, url, model, out, repetitions, wait, verbose=True):
+    def __init__(self, engine, url, model, out, repetitions, wait, verbose=True,
+                 api_key=None):
         self.engine = engine
         self.url = url.rstrip("/")
         self.model = model
@@ -366,7 +379,9 @@ class Session:
         self.repetitions = repetitions
         self.wait = wait
         self.verbose = verbose
-        self.version = engine_version(engine, self.url)
+        self.api_key = api_key
+        self.headers = {"Authorization": "Bearer " + api_key} if api_key else {}
+        self.version = engine_version(engine, self.url, api_key)
         self.rows = []
         self.started = time.strftime("%Y-%m-%dT%H:%M:%S")
         # The protocol says no external load on the GPU. Nothing was checking.
@@ -415,12 +430,15 @@ class Session:
         try:
             if stream:
                 first, last, chunks, usage, timings, t0 = stream_json(
-                    self.url + "/v1/chat/completions", payload)
+                    self.url + "/v1/chat/completions", payload,
+                    headers=self.headers)
                 client_total = (last - t0) if last else None
                 client_ttft = (first - t0) if first else None
                 completion = chunks or None
             else:
-                status, body, raw = post_json(self.url + "/v1/chat/completions", payload)
+                status, body, raw = post_json(
+                    self.url + "/v1/chat/completions", payload,
+                    headers=self.headers)
                 if status != 200:
                     error = "http %s: %s" % (status, raw[:120])
                 elif isinstance(body, dict):
@@ -917,6 +935,9 @@ def main():
                     help="how much the model may write back. Held fixed, this is a "
                          "control; varied, it asks whether the fixed cost has "
                          "anything to do with setting generation up")
+    ap.add_argument("--api-key", default=None,
+                    help="bearer token for engines that require one (HyperQwen "
+                         "reads VLLM_API_KEY from the environment by default)")
     args = ap.parse_args()
 
     if args.corpus:
@@ -936,7 +957,10 @@ def main():
             return 2
 
     url = args.url or ENGINES[args.engine]["url"]
-    model = args.model or _guess_model(url)
+    api_key = args.api_key or (
+        os.environ.get("VLLM_API_KEY") if args.engine == "hyperqwen" else None)
+    headers = {"Authorization": "Bearer " + api_key} if api_key else None
+    model = args.model or _guess_model(url, headers)
     if not model:
         print("  no model given and the engine did not name one: pass --model", file=sys.stderr)
         return 2
@@ -949,12 +973,13 @@ def main():
     print()
     print("  LocBench — measuring")
     print("    engine    : %s at %s" % (args.engine, url))
-    print("    version   : %s" % engine_version(args.engine, url))
+    print("    version   : %s" % engine_version(args.engine, url, api_key))
     print("    model     : %s" % model)
     print("    experiment: %s" % args.experiment)
     print()
 
-    session = Session(args.engine, url, model, out, args.repetitions, args.wait)
+    session = Session(args.engine, url, model, out, args.repetitions, args.wait,
+                      api_key=api_key)
     if session.version == "unknown":
         print("  the engine did not report a version. It will be recorded as")
         print("  'unknown', which is honest and worse than a number -- an engine")
@@ -987,8 +1012,8 @@ def main():
     return 0
 
 
-def _guess_model(url):
-    status, body = get_json(url.rstrip("/") + "/v1/models")
+def _guess_model(url, headers=None):
+    status, body = get_json(url.rstrip("/") + "/v1/models", headers=headers)
     if status == 200 and isinstance(body, dict):
         data = body.get("data") or []
         if data and isinstance(data[0], dict):

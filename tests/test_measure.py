@@ -30,6 +30,7 @@ class FakeEngine(BaseHTTPRequestHandler):
     """An OpenAI-compatible endpoint that remembers what it was asked."""
 
     received = []
+    received_headers = []
     fail_next = 0
     report_usage = True
     report_timings = True
@@ -59,6 +60,7 @@ class FakeEngine(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         payload = json.loads(self.rfile.read(length) or b"{}")
         FakeEngine.received.append(payload)
+        FakeEngine.received_headers.append(dict(self.headers))
 
         if FakeEngine.fail_next > 0:
             FakeEngine.fail_next -= 1
@@ -109,6 +111,7 @@ class FakeEngine(BaseHTTPRequestHandler):
 @pytest.fixture
 def engine():
     FakeEngine.received = []
+    FakeEngine.received_headers = []
     FakeEngine.fail_next = 0
     FakeEngine.report_usage = True
     FakeEngine.report_cached = True
@@ -319,6 +322,31 @@ def test_the_version_is_read_off_the_disk_when_the_engine_stays_quiet(monkeypatc
     """The fallback that makes the field worth having on a real machine."""
     monkeypatch.setattr(measure, "local_version", lambda _engine: "tabbyAPI abc1234")
     assert measure.engine_version("tabbyapi", "http://127.0.0.1:1") == "tabbyAPI abc1234"
+
+
+def test_hyperqwen_is_an_engine_with_an_openai_endpoint():
+    """The vLLM container is a fifth engine, not a special case in the client."""
+    assert "hyperqwen" in measure.ENGINES
+    assert measure.ENGINES["hyperqwen"]["url"].endswith(":18020")
+    assert measure.ENGINES["hyperqwen"]["version_label"] == "HyperQwen / vLLM 0.31.0"
+
+
+def test_hyperqwen_declares_the_runtime_its_image_pins(engine):
+    """Its /v1/models names the checkpoint and no build; the label is the image."""
+    assert measure.engine_version("hyperqwen", engine) == "HyperQwen / vLLM 0.31.0"
+
+
+def test_the_api_key_is_sent_only_when_one_is_given(engine, tmp_path):
+    """A key in the row is not a key in the request. This checks the request."""
+    session, _ = a_session(engine, tmp_path, api_key="secret")
+    session.request("hello", stream=False, inject_usage=False)
+    assert any(h.get("Authorization") == "Bearer secret"
+               for h in FakeEngine.received_headers)
+
+    FakeEngine.received_headers = []
+    session, _ = a_session(engine, tmp_path)
+    session.request("hello", stream=False, inject_usage=False)
+    assert all("Authorization" not in h for h in FakeEngine.received_headers)
 
 
 def test_the_window_the_engine_implies_is_recovered(engine, tmp_path):
