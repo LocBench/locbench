@@ -91,6 +91,7 @@ bench/compare_engines.py   one cell, several engines, both clocks, and the gap
 bench/analyze_log.py       redoes the September analysis from the raw data
 bench/analyze_d1.py        one cell of D1, fitted across the lengths
 bench/plot_fixed_cost.py   the four engines on one clock, as a picture
+bench/plot_social_preview.py  the 1280x640 card for the repository and X
 bench/environment.sh       the machine and the engine versions, as a card
 bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
 bin/verify_post.py         post texts against the platform character limits

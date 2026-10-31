@@ -35,8 +35,10 @@ jobs:
       - name: The post lengths
         run: python3 bin/verify_post.py --all
 
-      - name: The chart still matches the table
-        run: python3 bench/plot_fixed_cost.py --check
+      - name: The chart and the card still match the table
+        run: |
+          python3 bench/plot_fixed_cost.py --check
+          python3 bench/plot_social_preview.py --check
 
       - name: The September analysis, as the README says
         run: python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
