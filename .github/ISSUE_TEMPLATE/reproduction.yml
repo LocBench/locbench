@@ -1,0 +1,67 @@
+name: A number that does not reproduce
+description: Tell us what you measured, on what, and what you got instead.
+title: "[repro] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A disagreement is not a problem. It is the next measurement.
+
+        Please give enough that the run can be repeated: engine, version,
+        source commit, cell, prompt length, and whether it streamed.
+
+  - type: input
+    id: engine
+    attributes:
+      label: Engine and version
+      placeholder: "Ollama 0.34.4 · llama.cpp b427 · TabbyAPI be74bf0 · LM Studio 69d945a"
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source commit
+      description: For llama.cpp, TabbyAPI or exllamav3. The version string is not enough.
+
+  - type: input
+    id: cell
+    attributes:
+      label: Cell and prompt length
+      placeholder: "stream, 300 words · plain@1200 · 8B, 4000 words"
+    validations:
+      required: true
+
+  - type: textarea
+    id: got
+    attributes:
+      label: What you got
+      description: The number, and the command that produced it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the piece says
+      description: Quote the line or the table row you are comparing against.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment card
+      description: "Paste the output of `bench/environment.sh`, or the relevant lines."
+
+  - type: textarea
+    id: raw
+    attributes:
+      label: Raw row
+      description: The JSONL line, if you have one. It is the most useful thing in this form.
+
+  - type: checkboxes
+    id: credit
+    attributes:
+      label: If this turns into a correction, how should it be credited?
+      options:
+        - label: With my name or handle.
+        - label: Anonymously.

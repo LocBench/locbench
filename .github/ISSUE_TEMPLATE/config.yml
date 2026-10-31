@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: The method
+    url: https://github.com/LocBench/locbench/blob/main/PROTOCOL.md
+    about: What is measured, how, and what the measurement does not control.
+  - name: Reproduce everything
+    url: https://github.com/LocBench/locbench#redo-everything-the-protocol-claims-from-zero
+    about: The one command that reruns the analyses, the chart and the gates.

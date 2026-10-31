@@ -2,7 +2,8 @@
 
 The useful contribution here is **a number that does not reproduce**.
 
-Open an issue with:
+Use the [reproduction form](https://github.com/LocBench/locbench/issues/new/choose),
+or open an issue with:
 
 - the engine and its version
 - the source commit, for llama.cpp, TabbyAPI or exllamav3
