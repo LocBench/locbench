@@ -126,7 +126,7 @@ from the committed data by `bin/verify_piece.py`.
 The method changed while doing it, and that is the most useful thing here: **the
 engine's own reported window is not one instrument read four times.** Over
 identical streamed requests, llama.cpp's leaves 63 ms of each request untimed
-and TabbyAPI's 128. So the ranking column is the client's clock, over streamed
+and TabbyAPI's 124. So the ranking column is the client's clock, over streamed
 requests, where one clock times one interval for every engine — and the engine's
 own number is kept beside it as the cross-check it always was.
 
