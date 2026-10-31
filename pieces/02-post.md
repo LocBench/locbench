@@ -36,14 +36,14 @@ table did. And on the OpenAI endpoint, the one every client actually speaks,
 Ollama and LM Studio publish token counts and **no timings at all**, so "the
 engine's own clock" was a comparison of two engines out of four.
 
-**On one clock, all four, streamed, same weight file:**
+**On one clock, all four, streamed, one 27B:**
 
-| engine | fixed cost | throughput |
-|---|---|---|
-| Ollama 0.34.4 | 0.105 ± 0.007 s | 1158 tok/s |
-| llama.cpp b427 | 0.161 ± 0.010 s | 1145 tok/s |
-| TabbyAPI / exllamav3 | 0.273 ± 0.044 s | 1106 tok/s |
-| LM Studio 69d945a | 0.416 ± 0.061 s | 729 tok/s |
+    engine                    fixed cost          throughput
+
+    Ollama 0.34.4             0.105 ± 0.007 s     1158 tok/s
+    llama.cpp b427            0.161 ± 0.010 s     1145 tok/s
+    TabbyAPI / exllamav3      0.273 ± 0.044 s     1106 tok/s
+    LM Studio 69d945a         0.416 ± 0.061 s      729 tok/s
 
 Ollama, llama.cpp and LM Studio are the **same file** -- `sha256 3445102e...`,
 16,811 MB, verified by hash, and two of them load it through a symlink into
@@ -52,13 +52,13 @@ Ollama's blob store. Per-request cost differs 4.0x.
 **Then I ran Qwen3-8B, and the ranking did not survive.** Same cell, same
 client, same lengths, a third of the size:
 
-| model | engine | fixed cost |
-|---|---|---|
-| 27B | Ollama | 0.105 ± 0.007 s |
-| 27B | llama.cpp | 0.161 ± 0.010 s |
-| 8B | llama.cpp | 0.040 ± 0.010 s |
-| 8B | Ollama | 0.046 ± 0.010 s |
-| 8B | LM Studio | 0.114 ± 0.055 s |
+    model  engine      fixed cost
+
+    27B    Ollama      0.105 ± 0.007 s
+    27B    llama.cpp   0.161 ± 0.010 s
+    8B     llama.cpp   0.040 ± 0.010 s
+    8B     Ollama      0.046 ± 0.010 s
+    8B     LM Studio   0.114 ± 0.055 s
 
 On the 27B, Ollama is 56 ms faster per request than llama.cpp at 4.6 sigma. On
 the 8B the two are **6 ms apart at 0.4 sigma** -- nothing -- and llama.cpp is
@@ -129,7 +129,7 @@ Its CUDA builds abort or load without offloading. On Vulkan it gets 729 tok/s wh
 <!-- limit: 280 -- an X reply -->
 
 ```
-Same weight file, four engines, per-request cost timed with one clock:
+Same 27B, four engines, per-request cost timed with one clock:
 
 Ollama      0.105 s
 llama.cpp   0.161 s

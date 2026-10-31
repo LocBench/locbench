@@ -62,12 +62,12 @@ which is not r. It approaches r as the prompt grows and collapses as it shrinks.
 Fitting 87 real requests through a logging proxy in front of TabbyAPI (one RTX
 3090) gives a = 0.447 s, r = 943 tok/s, R² = 0.953:
 
-| uncached tokens | reported | actual time |
-|-----------------|----------|-------------|
-| 200             | 303 tok/s| 0.66 s      |
-| 1,000           | 664 tok/s| 1.51 s      |
-| 10,000          | 905 tok/s| 11.0 s      |
-| 30,000          | 930 tok/s| 32.3 s      |
+    uncached tokens   reported    actual time
+
+    200               303 tok/s   0.66 s
+    1,000             664 tok/s   1.51 s
+    10,000            905 tok/s   11.0 s
+    30,000            930 tok/s   32.3 s
 
 Same machine. A benchmark at 200-token prompts and one at 30,000 can differ 3x
 and both be honest. A number you published last week may not reproduce today,
