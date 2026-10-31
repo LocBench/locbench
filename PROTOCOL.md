@@ -34,9 +34,11 @@ The denominator, `time_prefill`, is what exllamav3 documents in
 llama.cpp computes the same quantity in `tools/server/server-common.h`: uncached
 tokens — it tracks `n_prompt_cached` and `n_prompt_processed` separately and
 divides by the latter — over a window that opens when the slot picks up the
-prompt (`tools/server/server-context.cpp:3122`) and closes once the first token
-has been sampled and the context synchronised (`tools/server/server-context.cpp:3844-3850`).
+prompt (`tools/server/server-context.cpp:3922`) and closes once the first token
+has been sampled and the context synchronised (`tools/server/server-context.cpp:4786-4794`).
 The comment in the source says why the measurement is taken at that point.
+Line numbers are from commit `19cce69` (27 October 2026); the code cited is
+unchanged since the build measured here.
 
 So the field named `prompt_tokens_per_sec`, the one everyone reads and compares,
 is:
