@@ -26,30 +26,5 @@ jobs:
       - name: Install the test dependencies
         run: python3 -m pip install --quiet pytest matplotlib
 
-      - name: Fetch the pinned engine sources
-        run: bin/fetch-sources.sh
-
-      - name: The gate on the pieces
-        run: python3 bin/verify_piece.py --all
-
-      - name: The post lengths
-        run: python3 bin/verify_post.py --all
-
-      - name: The chart and the card still match the table
-        run: |
-          python3 bench/plot_fixed_cost.py --check
-          python3 bench/plot_social_preview.py --check
-
-      - name: The September analysis, as the README says
-        run: python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
-
-      - name: The four engines, one clock
-        run: |
-          python3 bench/compare_engines.py --cell stream \
-            data/2026-10-03-stream-ollama.jsonl \
-            data/2026-10-03-stream-llamacpp.jsonl \
-            data/2026-10-03-stream-tabbyapi.jsonl \
-            data/2026-10-03-stream-lmstudio.jsonl
-
-      - name: The tests
-        run: python3 -m pytest tests/ -q
+      - name: Reproduce everything
+        run: bin/reproduce.sh

@@ -96,6 +96,7 @@ bench/environment.sh       the machine and the engine versions, as a card
 bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
 bin/verify_post.py         post texts against the platform character limits
 bin/fetch-sources.sh       the pinned engine sources, downloaded once
+bin/reproduce.sh           everything below, in one command
 data/                      the raw JSONL, one line per request, committed
 tests/                     the arithmetic and the gates, verified
 pieces/                    the published pieces, and the posts that go with them
@@ -104,21 +105,12 @@ pieces/                    the published pieces, and the posts that go with them
 Redo everything the protocol claims, from zero:
 
 ```bash
-bin/fetch-sources.sh          # once: the engine source the citations point into
-python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
-python3 bench/compare_engines.py --cell stream \
-    data/2026-10-03-stream-ollama.jsonl data/2026-10-03-stream-llamacpp.jsonl \
-    data/2026-10-03-stream-tabbyapi.jsonl data/2026-10-03-stream-lmstudio.jsonl
-python3 bench/plot_fixed_cost.py --check
-python3 bin/verify_piece.py --all
-python3 bin/verify_post.py --all
-python3 -m pytest tests/ -q
+bin/reproduce.sh
 ```
 
-The first command downloads the exact llama.cpp, TabbyAPI and exllamav3 files
-into `.sources/` (gitignored), at the versions in the environment card. Without
-them the citation checks cannot run, and `verify_piece.py` exits 1 instead of
-pretending they passed.
+It fetches the pinned engine sources, reruns the September analysis and the
+four-engine comparison, checks the chart and the card, runs both gates and the
+tests. The individual commands are in the script, in the order they run.
 
 ## The engines
 

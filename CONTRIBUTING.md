@@ -18,12 +18,12 @@ No pull request is needed for a report. If you are changing code, run what CI
 runs:
 
 ```bash
-bin/fetch-sources.sh
-python3 bin/verify_piece.py --all
-python3 bin/verify_post.py --all
-python3 bench/plot_fixed_cost.py --check
-python3 -m pytest tests/ -q
+bin/reproduce.sh
 ```
+
+It fetches the pinned sources, reruns the analyses, checks the chart and the
+card, runs both gates and the tests. It is the same command the README gives a
+reader.
 
 The data in `data/` is CC BY 4.0: reuse it, redo it, build on it, and say where
 it came from. The code is MIT.
