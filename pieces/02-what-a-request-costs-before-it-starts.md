@@ -174,6 +174,8 @@ models/lmstudio/orcarouter/Qwen3.8-27B-Uncensored/Qwen3.8-27B-Uncensored-Q4_K_M.
 — so it is one file on one disk, opened by three programs. Same weights, same
 card, same machine. Per-request cost differs **4.0x**; throughput differs 1.6x.
 
+![Fixed cost per request for Ollama, llama.cpp, TabbyAPI and LM Studio on one RTX 3090: 0.105, 0.161, 0.273 and 0.416 seconds, with one standard error. The ends are 4x apart.](fixed-cost.svg)
+
 **The two clocks agree on the slope and disagree on the intercept**, which is
 exactly what a constant per-request offset does to a line. llama.cpp: 1145 tok/s
 on the client's clock and 1152 on its own. TabbyAPI: 1106 and 1110. If the gap

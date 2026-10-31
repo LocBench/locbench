@@ -7,17 +7,22 @@ method next to them.**
 
 > **What it found**
 >
-> - Four engines, one 27B, one RTX 3090, one clock: the fixed cost per request
->   runs from **0.105 s to 0.416 s** — a **4.0x** spread before the first token.
+> - Five engines, one 27B class, one RTX 3090, one clock: the fixed cost per
+>   request runs from **0.0525 s to 0.416 s** — a **7.9x** spread before the
+>   first token.
+> - The first four engines spanned 4.0x. A fifth engine, added later, halved the
+>   best case: the 4x was not the ceiling.
 > - The ranking does not survive a smaller model: on an 8B, llama.cpp 0.040 s
 >   and Ollama 0.046 s are **6 ms apart at 0.4σ**.
 > - On this machine LM Studio had picked its **Vulkan** build: **729 tok/s**
 >   where llama.cpp gets **1145** on the same file.
 >
-> Measured 3 October 2026. [The full measurement](pieces/02-what-a-request-costs-before-it-starts.md)
-> · [The method](PROTOCOL.md) · [Rerun it](#redo-everything-the-protocol-claims-from-zero)
+> Measured 3 October 2026 (the four engines) and 31 October 2026 (the fifth).
+> [The fifth-engine piece](pieces/03-the-4x-was-not-the-ceiling.md) ·
+> [The four-engine piece](pieces/02-what-a-request-costs-before-it-starts.md) ·
+> [The method](PROTOCOL.md) · [Rerun it](#redo-everything-the-protocol-claims-from-zero)
 
-![Fixed cost per request for Ollama, llama.cpp, TabbyAPI and LM Studio on one RTX 3090: 0.105, 0.161, 0.273 and 0.416 seconds, with one standard error. The ends are 4x apart.](pieces/fixed-cost.svg)
+![Fixed cost per request for five engines on one RTX 3090: HyperQwen 0.052, Ollama 0.105, llama.cpp 0.161, TabbyAPI 0.273, LM Studio 0.416 seconds, with one standard error. The ends are 7.9x apart.](pieces/fixed-cost-five.svg)
 
 Local inference on the internet is full of opinions and poor in measurements.
 People publish token/s without saying at what context length, with what cache
@@ -76,10 +81,11 @@ questions that turn that hypothesis into a measurement, or demolish it.
 
 Published so far: [`pieces/`](pieces/) — starting with
 [what `prompt_tokens_per_sec` actually measures](pieces/01-what-prompt-tokens-per-second-measures.md),
-and then
+then
 [what an engine charges you before it does any work](pieces/02-what-a-request-costs-before-it-starts.md),
-where the metric above is measured under control on four engines and the answer
-turns out to depend on which clock you ask.
+where the metric is measured under control on four engines, and then
+[the 4x was not the ceiling](pieces/03-the-4x-was-not-the-ceiling.md), where a
+fifth engine halves the best case and the spread becomes 7.9x.
 
 ## Layout
 
@@ -92,6 +98,7 @@ bench/compare_engines.py   one cell, several engines, both clocks, and the gap
 bench/analyze_log.py       redoes the September analysis from the raw data
 bench/analyze_d1.py        one cell of D1, fitted across the lengths
 bench/plot_fixed_cost.py   the four engines on one clock, as a picture
+bench/plot_fixed_cost_five.py  the fifth engine, and the 7.9x
 bench/plot_social_preview.py  the 1280x640 card for the repository and X
 bench/environment.sh       the machine and the engine versions, as a card
 bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
@@ -110,8 +117,9 @@ bin/reproduce.sh
 ```
 
 It fetches the pinned engine sources, reruns the September analysis and the
-four-engine comparison, checks the chart and the card, runs both gates and the
-tests. The individual commands are in the script, in the order they run.
+four-engine comparison, checks the four-engine chart, the card and the fifth
+engine, runs both gates and the tests. The individual commands are in the
+script, in the order they run.
 
 ## The engines
 
@@ -140,12 +148,14 @@ and being checkable is the whole claim.
 
 ## Status
 
-Last measurement: **3 October 2026**, one RTX 3090. Next: a real agent
-workload, and the same protocol on a second machine when one is available.
+Last measurement: **31 October 2026** (the fifth engine); the four-engine
+campaign is 3 October. Next: the same-checkpoint control and a same-session
+five-engine rerun.
 
 The protocol is written, the three controlled experiments (D1, D2, D3) have been
-run on four engines, and every number in the two published pieces is recomputed
-from the committed data by `bin/verify_piece.py`.
+run on four engines, and the fifth engine extended the comparison on 31 October.
+Every number in the three published pieces is recomputed from the committed data
+by `bin/verify_piece.py`.
 
 The method changed while doing it, and that is the most useful thing here: **the
 engine's own reported window is not one instrument read four times.** Over
@@ -155,8 +165,8 @@ requests, where one clock times one interval for every engine — and the engine
 own number is kept beside it as the cross-check it always was.
 
 What is not done is in the pieces, item by item, rather than in a footnote:
-one machine, one card, one model, and prompts that are still not anyone's
-real workload.
+one machine, one card, two model classes, five engines, and prompts that are
+still not anyone's real workload.
 
 The pieces published so far are in [`pieces/`](pieces/).
 

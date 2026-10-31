@@ -38,6 +38,7 @@ def test_the_svg_is_well_formed_and_names_the_four():
         assert name in text
 
 
-def test_the_readme_shows_the_picture():
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "pieces/fixed-cost.svg" in readme
+def test_the_four_engine_piece_shows_the_four_engine_chart():
+    piece = (ROOT / "pieces" / "02-what-a-request-costs-before-it-starts.md").read_text(
+        encoding="utf-8")
+    assert "fixed-cost.svg" in piece

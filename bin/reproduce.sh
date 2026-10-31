@@ -31,6 +31,9 @@ step "the chart and the card"
 python3 bench/plot_fixed_cost.py --check
 python3 bench/plot_social_preview.py --check
 
+step "the fifth engine"
+python3 bench/plot_fixed_cost_five.py --check
+
 step "the gate on the pieces"
 python3 bin/verify_piece.py --all
 

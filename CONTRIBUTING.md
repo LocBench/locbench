@@ -22,9 +22,9 @@ runs:
 bin/reproduce.sh
 ```
 
-It fetches the pinned sources, reruns the analyses, checks the chart and the
-card, runs both gates and the tests. It is the same command the README gives a
-reader.
+It fetches the pinned sources, reruns the analyses, checks the chart, the card
+and the fifth engine, runs both gates and the tests. It is the same command the
+README gives a reader.
 
 The data in `data/` is CC BY 4.0: reuse it, redo it, build on it, and say where
 it came from. The code is MIT.
