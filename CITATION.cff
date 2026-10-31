@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use these measurements, cite the repository and the campaign date."
+title: "LocBench: a measurement bench for local LLM inference"
+abstract: "One variable at a time, the environment declared, the raw data published, and the limits stated. Four engines on one RTX 3090, with the client and the analysis scripts that produced every number."
+authors:
+  - name: "LocBench"
+version: "0.1.0"
+date-released: 2026-10-31
+license: MIT
+repository-code: "https://github.com/LocBench/locbench"
+url: "https://github.com/LocBench/locbench"
+keywords:
+  - local llm
+  - llm inference
+  - benchmarking
+  - reproducibility
+  - llama.cpp
+  - ollama
+  - lm studio
+  - tabbyapi

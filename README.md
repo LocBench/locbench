@@ -85,6 +85,7 @@ turns out to depend on which clock you ask.
 
 ```
 CONTRIBUTING.md           what to send when a number does not reproduce
+CITATION.cff              how to cite the measurements
 PROTOCOL.md               what we measure, how, and what we do NOT control
 bench/measure.py           the client: builds the prompts, sends them, records raw
 bench/compare_engines.py   one cell, several engines, both clocks, and the gap
