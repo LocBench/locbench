@@ -1,0 +1,53 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the test dependencies
+        run: python3 -m pip install --quiet pytest matplotlib
+
+      - name: Fetch the pinned engine sources
+        run: bin/fetch-sources.sh
+
+      - name: The gate on the pieces
+        run: python3 bin/verify_piece.py --all
+
+      - name: The post lengths
+        run: python3 bin/verify_post.py --all
+
+      - name: The chart still matches the table
+        run: python3 bench/plot_fixed_cost.py --check
+
+      - name: The September analysis, as the README says
+        run: python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
+
+      - name: The four engines, one clock
+        run: |
+          python3 bench/compare_engines.py --cell stream \
+            data/2026-10-03-stream-ollama.jsonl \
+            data/2026-10-03-stream-llamacpp.jsonl \
+            data/2026-10-03-stream-tabbyapi.jsonl \
+            data/2026-10-03-stream-lmstudio.jsonl
+
+      - name: The tests
+        run: python3 -m pytest tests/ -q

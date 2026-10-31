@@ -16,6 +16,9 @@ itself. This script does three things to a text:
     python3 bin/verify_piece.py pieces/01-....md
     python3 bin/verify_piece.py --all
 
+Before the first run, `bin/fetch-sources.sh` downloads the exact engine sources
+the citations point into; without them the gate exits 1 rather than pass.
+
 Exits with code 1 if there is at least one error: it is meant to be a gate, not
 a report to read.
 """
@@ -30,13 +33,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "bench"))
 
 # Where to look for the engine sources. They live outside the repository, so
-# anyone who clones it will not have them — and a citation pointing into them
-# comes back unverifiable, which is what the gate should say rather than
-# pretend otherwise.
+# anyone who clones it will not have them — run `bin/fetch-sources.sh` once and
+# the exact files used by the measurements land in `.sources/`, which is checked
+# first. A citation that is still unverifiable after that is an error, not a
+# pass: the gate is not allowed to pretend it checked something it did not.
 #
 # More roots can be added with LOCBENCH_SOURCES, separated by ":".
 SOURCE_ROOTS = [
     *(Path(p) for p in os.environ.get("LOCBENCH_SOURCES", "").split(":") if p),
+    ROOT / ".sources",
     Path.home() / "tools" / "llama.cpp",
     Path.home() / "tools" / "tabbyAPI",
     Path.home() / "scripts",             # the collection proxy, not published
@@ -111,7 +116,8 @@ def _check_citation(m, seen, report):
         # instance). An explicit error beats silence: a reader does not know
         # that file exists, and it has to be said somewhere.
         report.error(f"citation not found: {path} "
-                     f"(it is in none of the known roots, not even outside the repo)")
+                     f"(it is in none of the known roots; run bin/fetch-sources.sh "
+                     f"to download the measured sources)")
         return
     if not da:
         return

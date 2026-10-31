@@ -48,7 +48,7 @@ where it is documented in `generator/generator.py:498` as:
 
 Also careful: `n_prompt_cached` and `n_prompt_processed` are tracked separately,
 and the metric uses the processed ones. The window opens when the slot picks up
-the prompt (`server-context.cpp:3922`) and closes after the first token is
+the prompt (`server-context.cpp:3122`) and closes after the first token is
 sampled and the context synchronised. The comment in the source says exactly
 that: "here we have synchronized the llama_context (due to the sampling above),
 so we can do time measurement".

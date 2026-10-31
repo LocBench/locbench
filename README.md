@@ -3,6 +3,22 @@
 **A measurement bench for local LLM inference — the numbers out front, the
 method next to them.**
 
+[![checks](https://github.com/LocBench/locbench/actions/workflows/checks.yml/badge.svg)](https://github.com/LocBench/locbench/actions/workflows/checks.yml)
+
+> **What it found**
+>
+> - Four engines, one 27B, one RTX 3090, one clock: the fixed cost per request
+>   runs from **0.105 s to 0.416 s** — a **4.0x** spread before the first token.
+> - The ranking does not survive a smaller model: on an 8B, llama.cpp 0.040 s
+>   and Ollama 0.046 s are **6 ms apart at 0.4σ**.
+> - On this machine LM Studio had picked its **Vulkan** build: **729 tok/s**
+>   where llama.cpp gets **1145** on the same file.
+>
+> Measured 3 October 2026. [The full measurement](pieces/02-what-a-request-costs-before-it-starts.md)
+> · [The method](PROTOCOL.md) · [Rerun it](#redo-everything-the-protocol-claims-from-zero)
+
+![Fixed cost per request for Ollama, llama.cpp, TabbyAPI and LM Studio on one RTX 3090: 0.105, 0.161, 0.273 and 0.416 seconds, with one standard error. The ends are 4x apart.](pieces/fixed-cost.svg)
+
 Local inference on the internet is full of opinions and poor in measurements.
 People publish token/s without saying at what context length, with what cache
 fraction, on which engine, at which version. Those numbers cannot be compared to
@@ -68,14 +84,17 @@ turns out to depend on which clock you ask.
 ## Layout
 
 ```
+CONTRIBUTING.md           what to send when a number does not reproduce
 PROTOCOL.md               what we measure, how, and what we do NOT control
 bench/measure.py           the client: builds the prompts, sends them, records raw
 bench/compare_engines.py   one cell, several engines, both clocks, and the gap
 bench/analyze_log.py       redoes the September analysis from the raw data
 bench/analyze_d1.py        one cell of D1, fitted across the lengths
+bench/plot_fixed_cost.py   the four engines on one clock, as a picture
 bench/environment.sh       the machine and the engine versions, as a card
 bin/verify_piece.py        the gate: citations, quoted code and numbers in a piece
 bin/verify_post.py         post texts against the platform character limits
+bin/fetch-sources.sh       the pinned engine sources, downloaded once
 data/                      the raw JSONL, one line per request, committed
 tests/                     the arithmetic and the gates, verified
 pieces/                    the published pieces, and the posts that go with them
@@ -84,13 +103,21 @@ pieces/                    the published pieces, and the posts that go with them
 Redo everything the protocol claims, from zero:
 
 ```bash
+bin/fetch-sources.sh          # once: the engine source the citations point into
 python3 bench/analyze_log.py --log data/2026-09-usage.jsonl
 python3 bench/compare_engines.py --cell stream \
     data/2026-10-03-stream-ollama.jsonl data/2026-10-03-stream-llamacpp.jsonl \
     data/2026-10-03-stream-tabbyapi.jsonl data/2026-10-03-stream-lmstudio.jsonl
+python3 bench/plot_fixed_cost.py --check
 python3 bin/verify_piece.py --all
+python3 bin/verify_post.py --all
 python3 -m pytest tests/ -q
 ```
+
+The first command downloads the exact llama.cpp, TabbyAPI and exllamav3 files
+into `.sources/` (gitignored), at the versions in the environment card. Without
+them the citation checks cannot run, and `verify_piece.py` exits 1 instead of
+pretending they passed.
 
 ## The engines
 
@@ -119,6 +146,9 @@ and being checkable is the whole claim.
 
 ## Status
 
+Last measurement: **3 October 2026**, one RTX 3090. Next: a real agent
+workload, and the same protocol on a second machine when one is available.
+
 The protocol is written, the three controlled experiments (D1, D2, D3) have been
 run on four engines, and every number in the two published pieces is recomputed
 from the committed data by `bin/verify_piece.py`.
@@ -135,6 +165,9 @@ one machine, one card, one model, and prompts that are still not anyone's
 real workload.
 
 The pieces published so far are in [`pieces/`](pieces/).
+
+**A number that does not reproduce is the most useful thing you can send:**
+see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 > Everything here is in English: this file, the protocol, the pieces, the commit
 > messages, the file and directory names, the analysis output and the CSV column

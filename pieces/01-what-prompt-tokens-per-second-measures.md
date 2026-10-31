@@ -96,7 +96,7 @@ double n_prompt_tps() const {
 
 Now, when does the window open and close? The comments answer it.
 
-`tools/server/server-context.cpp`, line 3922 — the window **opens** when the slot
+`tools/server/server-context.cpp`, line 3122 — the window **opens** when the slot
 picks up the prompt:
 
 ```cpp
@@ -104,7 +104,7 @@ slot.stats.update_prompt_start();
 slot.state = SLOT_STATE_PROCESSING_PROMPT;
 ```
 
-And at `tools/server/server-context.cpp:4786-4794` the window **closes** — and
+And at `tools/server/server-context.cpp:3844-3850` the window **closes** — and
 the comment right there is explicit about why the measurement is taken at that
 point:
 
@@ -124,8 +124,8 @@ The window closes **after the first token has been sampled and the context
 synchronized**. That is time to first token, with the sampling and the
 synchronisation included.
 
-Line numbers are from commit `19cce69` (27 October 2026); the measured build
-was `b427`, and the code cited here is unchanged between the two.
+Line numbers are from the measured source: commit `c85b92c` (29 September 2026,
+build `b427`).
 
 Same definition as TabbyAPI. Two independent implementations, in two languages,
 for two different engines, arrived at the same formula:
