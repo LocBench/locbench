@@ -17,7 +17,7 @@ I timed four local engines with one clock instead of four. Then I ran a smaller 
 **Body:**
 
 ```
-My first post here looked at what `prompt_tokens_per_sec` actually measures --
+The first piece looked at what `prompt_tokens_per_sec` actually measures --
 uncached tokens over time-to-first-token -- and found a fixed cost per request
 that the metric spreads over the few new tokens. This is the controlled version,
 and it cost me a correction to my own method first.
